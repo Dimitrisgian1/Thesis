@@ -1,0 +1,495 @@
+#include <iostream>
+#include <fstream>
+#include <cstring>
+#include <string>
+#include <stdlib.h>
+#include <stdio.h>
+#include <Eigen/Dense>
+#include <vector>
+#include <MathGeoLib.h>
+#include <cmath>
+
+
+using namespace std;
+using namespace Eigen;
+
+
+#define N 10002
+#define M 20000
+#define f 175
+
+
+void StoreNeighbourVerts(Matrix<int, Dynamic, Dynamic> Tr, Matrix<float, Dynamic, Dynamic> D, int P_index, std::vector<int> &NeighbourVerts, std::vector<int> &NeighbourRingIndex, std::vector<int> &ActiveNeighbourVerts, std::vector<int> ActiveVerts, int CurrentFrame, int flag);
+void DeleteDoubles(std::vector<int> &NeighbourVerts, std::vector<int> &NeighbourRingIndex);
+void IgnoreInactives(std::vector<int> &NeighbourVerts, std::vector<int> &ActiveNeighbourVerts, std::vector<int> ActiveVerts);
+float Ca(std::vector<int> &NeighbourVerts, std::vector<int> &ActiveNeighbourVerts, std::vector<int> NeighbourRingIndex, int maxRing);
+float Cb(std::vector<float> oldCa, std::vector<float> newCa, int ActiveSize, std::vector<int> &ActiveNeighbourVerts);
+void quickSort(std::vector<float> &arr, std::vector<int> &indices, int left, int right);
+void decimate(std::vector<int> &ActiveVerts, int &ActiveSize, std::vector<float> &Costs, std::vector<int> &CostInds, Matrix<int, Dynamic, Dynamic> Tr, Matrix<float, Dynamic, Dynamic> D, std::vector<int> &NeighbourVerts, std::vector<int> &ActiveNeighbourVerts, std::vector<int> &NeighbourRingIndex, int CurrentFrame, std::vector<float> &CaArrayNew, std::vector<float> &CaArrayOld);
+
+int main(int argc, char* argv[])
+{
+	string line;
+	Matrix<float, Dynamic, Dynamic> D;
+	Matrix<int, Dynamic, Dynamic> Tr;
+	std::vector<int> ActiveVerts; // 1 if active, 0 if inactive
+	std::vector<float> CaArrayOld;
+	std::vector<float> CaArrayNew;
+	std::vector<float> Costs;
+	std::vector<int> CostInds;
+	std::vector<float> Lengths; //for node clustering
+	std::vector<int> LengthInds;
+	std::vector<int> NeighbourVerts;
+	std::vector<int> NeighbourRingIndex;
+	std::vector<int> ActiveNeighbourVerts;
+	D.resize(3 * f, N);  //all verts
+	Tr.resize(3 * f, M); //all triangles
+	int ActiveSize = N;
+
+	//Load from files
+	{
+		ifstream myfileX("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\VertsX.txt");
+		if (myfileX)
+		{
+			for (int i = 0; i < f; i++)
+			{
+				for (int j = 0; j < N; j++)
+				{
+					(getline(myfileX, line));
+					float v;
+					string s;
+
+					v = stof(line);
+
+					D(3 * i, j) = v;
+				}
+			}
+			myfileX.close();
+		}
+		else std::cout << "fooey\n";
+
+		ifstream myfileY("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\VertsY.txt");
+		if (myfileY)
+		{
+			for (int i = 0; i < f; i++)
+			{
+				for (int j = 0; j < N; j++)
+				{
+					(getline(myfileY, line));
+					float v;
+					string s;
+
+					v = stof(line);
+
+					D(3 * i + 1, j) = v;
+				}
+			}
+			myfileY.close();
+		}
+		else std::cout << "fooey\n";
+
+		ifstream myfileZ("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\VertsZ.txt");
+		if (myfileZ)
+		{
+			for (int i = 0; i < f; i++)
+			{
+				for (int j = 0; j < N; j++)
+				{
+					(getline(myfileZ, line));
+					float v;
+					string s;
+
+					v = stof(line);
+
+					D(3 * i + 2, j) = v;
+				}
+			}
+			myfileZ.close();
+		}
+		else std::cout << "fooey\n";
+
+		ifstream myfile1("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Tris1.txt");
+		if (myfile1)
+		{
+			for (int i = 0; i < f; i++)
+			{
+				for (int j = 0; j < M; j++)
+				{
+					(getline(myfile1, line));
+					int v;
+					string s;
+
+					v = stoi(line);
+
+					Tr(3 * i, j) = v;
+				}
+			}
+			myfile1.close();
+		}
+		else std::cout << "fooey\n";
+
+		ifstream myfile2("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Tris2.txt");
+		if (myfile2)
+		{
+			for (int i = 0; i < f; i++)
+			{
+				for (int j = 0; j < M; j++)
+				{
+					(getline(myfile2, line));
+					int v;
+					string s;
+
+					v = stoi(line);
+
+					Tr(3 * i + 1, j) = v;
+				}
+			}
+			myfile2.close();
+		}
+		else std::cout << "fooey\n";
+
+		ifstream myfile3("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Tris3.txt");
+		if (myfile3)
+		{
+			for (int i = 0; i < f; i++)
+			{
+				for (int j = 0; j < M; j++)
+				{
+					(getline(myfile3, line));
+					int v;
+					string s;
+
+					v = stoi(line);
+
+					Tr(3 * i + 2, j) = v;
+				}
+			}
+			myfile3.close();
+		}
+		else std::cout << "fooey\n";
+	}
+
+
+	//create active vertex array for the first frame
+	for (int i = 0; i < N; i++)
+	{
+		ActiveVerts.push_back(1);
+		CaArrayOld.push_back(0);
+		CaArrayNew.push_back(0);
+		Costs.push_back(0);
+		CostInds.push_back(i);
+		Lengths.push_back(0);
+		LengthInds.push_back(i);
+	}
+
+	//first decimation (vert chosen randomly for decimation)
+	ActiveVerts[0] = 0;
+	ActiveSize--;
+
+	//eventually it will happen for every frame
+	int CurrentFrame = 0;
+
+
+	///////////////////////////////////////////////////////////////////////////////
+	for (int i = 0; i < N; i++)
+	{
+		vec Xo(D(3 * CurrentFrame, i), D(3 * CurrentFrame + 1, i), D(3 * CurrentFrame + 2, i));
+		for (int j = 0; j < N; j++)
+		{
+			if (ActiveVerts[i])
+			{
+				vec Xi(D(3 * CurrentFrame, j), D(3 * CurrentFrame + 1, j), D(3 * CurrentFrame + 2, j));
+				Lengths[j] = (Xo.x - Xi.x)*(Xo.x - Xi.x) + (Xo.y - Xi.y)*(Xo.y - Xi.y) + (Xo.z - Xi.z)*(Xo.z - Xi.z);
+			}
+		}
+		quickSort(Lengths, LengthInds, 0, Lengths.size() - 1);
+
+		int K = 10;
+		for (int j = 1; j < K; j++) //start from 1 to exclude itself
+		{
+			if (ActiveVerts[LengthInds[j]])
+			{
+				ActiveNeighbourVerts.push_back(LengthInds[j]);
+			}
+			else K++;
+
+
+			if (j == K - 1 && ActiveNeighbourVerts.size() < 3)
+			{
+				K++;
+			}
+		}
+		//elen3e an ta prwta k shmeia anhkoun sta idia trigwna kai einai energa. Gia ka8e anenergo shmeio sta prwta sorted shmeia au3hse to k kata 1.
+	}
+	///////////////////////////////////////////////////////////////////////////////
+	for (int i = 0; i < N; i++)
+	{
+		if (ActiveVerts[i])
+		{
+			int flag = 0;
+			//den proxwraei se 2o ring edw, alla pairnei polu xrono kai kollaei logw xwrou(?)
+			StoreNeighbourVerts(Tr, D, i, NeighbourVerts, NeighbourRingIndex, ActiveNeighbourVerts, ActiveVerts, CurrentFrame, flag);
+			int maxRing = 0;
+			for (int j = 0; j < NeighbourRingIndex.size(); j++)
+			{
+				maxRing = (NeighbourRingIndex[j] > maxRing) ? NeighbourRingIndex[j] : maxRing;
+			}
+			CaArrayNew[i] = Ca(NeighbourVerts, ActiveNeighbourVerts, NeighbourRingIndex, maxRing);
+			ActiveNeighbourVerts.clear();
+			NeighbourVerts.clear();
+			NeighbourRingIndex.clear();
+		}
+	}
+
+	for (int i = 0; i < N; i++)
+	{
+		if (ActiveVerts[i])
+		{
+			Costs[i] = CaArrayNew[i] + 0.8 * Cb(CaArrayOld, CaArrayNew, ActiveSize, ActiveNeighbourVerts);
+		}
+	}
+
+	quickSort(Costs, CostInds, 0, N - 1);
+
+	//decimate until half verts have been decimated for testing purposes
+	for (int i = 0; i < (int)(N / 2); i++)
+	{
+		decimate(ActiveVerts, ActiveSize, Costs, CostInds, Tr, D, NeighbourVerts, ActiveNeighbourVerts, NeighbourRingIndex, CurrentFrame, CaArrayNew, CaArrayOld);
+	}
+
+
+}
+
+
+//takes as input the index to a point and stores the indices to its neighbors
+void StoreNeighbourVerts(Matrix<int, Dynamic, Dynamic> Tr, Matrix<float, Dynamic, Dynamic> D, int P_index, std::vector<int> &NeighbourVerts, std::vector<int> &NeighbourRingIndex, std::vector<int> &ActiveNeighbourVerts, std::vector<int> ActiveVerts, int CurrentFrame, int flag)
+{
+	flag++ ; //if flag doesn't work well, define it as a global variable and initialize it here, as mentioned later
+
+	//go through all verts and add the 1-ring neighbours to a list and also add the ring distance of every neighbour to another list
+	for (int i = 0; i < M; i++)
+	{
+		int check = 0;
+		if (Tr(3 * CurrentFrame + 0, i) == P_index)
+		{
+			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 1, i));
+			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 2, i));
+
+			//contains the ring distance of each neighbour
+			NeighbourRingIndex.push_back(flag);
+			NeighbourRingIndex.push_back(flag);
+		}
+
+		if (Tr(3 * CurrentFrame + 1, i) == P_index)
+		{
+			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 0, i));
+			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 2, i));
+
+			//contains the ring distance of each neighbour
+			NeighbourRingIndex.push_back(flag);
+			NeighbourRingIndex.push_back(flag);
+		}
+
+		if (Tr(3 * CurrentFrame + 2, i) == P_index)
+		{
+			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 0, i));
+			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 1, i));
+
+			//contains the ring distance of each neighbour
+			NeighbourRingIndex.push_back(flag);
+			NeighbourRingIndex.push_back(flag);
+		}
+	}
+
+	DeleteDoubles(NeighbourVerts, NeighbourRingIndex);
+	IgnoreInactives(NeighbourVerts, ActiveNeighbourVerts, ActiveVerts);
+
+	for (int ring_count = 0; ring_count < 3; ring_count++)	//go up to 3-ring neighbours
+	{
+		if (ActiveNeighbourVerts.size() < 3)
+		{
+			flag++;
+			for (int i = 0; i < NeighbourVerts.size(); i++)
+			{
+				StoreNeighbourVerts(Tr, D, NeighbourVerts[i], NeighbourVerts, NeighbourRingIndex, ActiveNeighbourVerts, ActiveVerts, CurrentFrame, flag);
+			}
+
+			DeleteDoubles(NeighbourVerts, NeighbourRingIndex);
+			IgnoreInactives(NeighbourVerts, ActiveNeighbourVerts, ActiveVerts);
+
+			//not sure if the static flag command will make the flag never be reinitialized again and we will end up with the flag going over 3. If so make flag global
+		}
+	}
+	
+	//delete P from Neighbours
+
+	for (int i = 0; i < ActiveNeighbourVerts.size(); i++)
+	{
+		if (ActiveNeighbourVerts[i] == P_index)
+		{
+			ActiveNeighbourVerts.erase(ActiveNeighbourVerts.begin() + i);
+		}
+
+		if (i >= ActiveNeighbourVerts.size())
+			break;
+	}
+}
+
+void DeleteDoubles(std::vector<int> &NeighbourVerts, std::vector<int> &NeighbourRingIndex)
+{
+	for (int i = 0; i < NeighbourVerts.size(); i++)
+	{
+		for (int j = 0; j < NeighbourVerts.size(); j++)
+		{
+			if (i != j && NeighbourVerts[i] == NeighbourVerts[j])
+			{
+				NeighbourVerts.erase(NeighbourVerts.begin() + j);
+				NeighbourRingIndex.erase(NeighbourRingIndex.begin() + j);
+
+				j = i; //on the next iteration j = i + 1 so that it rechecks list
+			}
+			if (i >= NeighbourVerts.size() || j >= NeighbourVerts.size()) break;
+		}
+		if (i >= NeighbourVerts.size()) break;
+	}
+}
+
+void IgnoreInactives(std::vector<int> &NeighbourVerts, std::vector<int> &ActiveNeighbourVerts, std::vector<int> ActiveVerts)
+{
+	//Finds and passes on Active vertices
+	for (int i = 0; i < NeighbourVerts.size(); i++)
+	{
+		if (ActiveVerts[NeighbourVerts[i]])
+			ActiveNeighbourVerts.push_back(NeighbourVerts[i]);
+		else
+		{
+			if (i == 0  && ActiveNeighbourVerts.size())
+				ActiveNeighbourVerts.push_back(-1);		//if first element is inactive make its index -1
+
+			if (i != 0 && ActiveNeighbourVerts.size())
+				ActiveNeighbourVerts.push_back(ActiveNeighbourVerts.size() - 1); //if inactive vert, duplicate the previous entry for later check at cost functions
+		}
+		//example: [0 3 2 2 2 4] 4rth and 5th element are inactive
+	}
+}
+
+float Ca(std::vector<int> &NeighbourVerts, std::vector<int> &ActiveNeighbourVerts, std::vector<int> NeighbourRingIndex, int maxRing)
+{
+	float Cost = 0;
+
+
+	for (int i = 1; i < maxRing; i++)
+	{
+		int Actives = 0;
+		int RingNeigbours = 0;
+
+		for (int j = 1; j < NeighbourVerts.size(); j++)
+		{
+			//Check for duplicate vecs in ActiveNeighbourVerts because that means inactive vert
+			if (ActiveNeighbourVerts[j] != ActiveNeighbourVerts[j - 1] && NeighbourRingIndex[j] == i)
+				Actives++;
+			if (NeighbourRingIndex[j] == i)
+				RingNeigbours++;
+		}
+
+		if(RingNeigbours)
+			Cost += ((RingNeigbours - Actives) / RingNeigbours) * pow(0.6, i);
+	}
+
+	return Cost;
+}
+
+float Cb(std::vector<float> oldCa, std::vector<float> newCa, int ActiveSize, std::vector<int> &ActiveNeighbourVerts)
+{
+	float Cost = 0;
+
+
+	for (int i = 1; i < ActiveSize; i++)
+	{
+		//Check for duplicate vecs in ActiveNeighbourVerts because that means inactive vert
+		if (ActiveNeighbourVerts[i] != ActiveNeighbourVerts[i - 1])
+		{
+			Cost += (oldCa[i] - newCa[i]) / (ActiveSize + 1); 
+		}
+	}
+	return Cost;
+}
+
+void decimate(std::vector<int> &ActiveVerts, int &ActiveSize, std::vector<float> &Costs, std::vector<int> &CostInds, Matrix<int, Dynamic, Dynamic> Tr, Matrix<float, Dynamic, Dynamic> D, std::vector<int> &NeighbourVerts, std::vector<int> &ActiveNeighbourVerts, std::vector<int> &NeighbourRingIndex, int CurrentFrame, std::vector<float> &CaArrayNew, std::vector<float> &CaArrayOld)
+{
+	ActiveVerts[CostInds[N]] = 0; //decimate the verts with the smallest cost
+	ActiveSize--;
+
+	for (int i = 0; i < N; i++)
+	{
+		if (ActiveVerts[i])
+		{
+			int flag = 0;
+			StoreNeighbourVerts(Tr, D, i, NeighbourVerts, NeighbourRingIndex, ActiveNeighbourVerts, ActiveVerts, CurrentFrame, flag);
+			int maxRing = 0;
+			for (int j = 0; j < NeighbourRingIndex.size(); j++)
+			{
+				maxRing = (NeighbourRingIndex[j] > maxRing) ? NeighbourRingIndex[j] : maxRing;
+			}
+			CaArrayNew[i] = Ca(NeighbourVerts, ActiveNeighbourVerts, NeighbourRingIndex, maxRing);
+			ActiveNeighbourVerts.clear();
+			NeighbourVerts.clear();
+		}
+	}
+
+	for (int i = 0; i < N; i++)
+	{
+		if (ActiveVerts[i])
+		{
+			Costs[i] = CaArrayNew[i] + 0.8 * Cb(CaArrayOld, CaArrayNew, ActiveSize, ActiveNeighbourVerts);
+		}
+	}
+
+	quickSort(Costs, CostInds, 0, N - 1);
+}
+
+void quickSort(std::vector<float> &arr, std::vector<int> &indices, int left, int right)
+{
+	int i = left, j = right;
+	float tmp1;
+	int tmp2;
+	float pivot = arr[(left + right) / 2];
+
+
+
+	/* partition */
+
+	while (i <= j)
+	{
+		while (arr[i] < pivot)	i++;
+
+		while (arr[j] > pivot)	j--;
+
+
+		if (i <= j)
+		{
+			tmp1 = arr[i];
+			arr[i] = arr[j];
+			arr[j] = tmp1;
+
+
+			tmp2 = indices[i];
+			indices[i] = indices[j];
+			indices[j] = tmp2;
+
+			i++;
+			j--;
+		}
+	};
+
+
+
+	/* recursion */
+
+	if (left < j)
+		quickSort(arr, indices, left, j);
+
+	if (i < right)
+		quickSort(arr, indices, i, right);
+
+}
