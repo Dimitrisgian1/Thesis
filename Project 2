@@ -16,7 +16,7 @@ using namespace Eigen;
 
 #define N 10002
 #define M 20000
-#define f 175
+#define f 1 //change to 175 for all frames 
 
 
 void StoreNeighbourVerts(Matrix<int, Dynamic, Dynamic> Tr, Matrix<float, Dynamic, Dynamic> D, int P_index, std::vector<int> &NeighbourVerts, std::vector<int> &NeighbourRingIndex, std::vector<int> &ActiveNeighbourVerts, std::vector<int> ActiveVerts, int CurrentFrame, int flag);
@@ -26,25 +26,38 @@ float Ca(std::vector<int> &NeighbourVerts, std::vector<int> &ActiveNeighbourVert
 float Cb(std::vector<float> oldCa, std::vector<float> newCa, int ActiveSize, std::vector<int> &ActiveNeighbourVerts);
 void quickSort(std::vector<float> &arr, std::vector<int> &indices, int left, int right);
 void decimate(std::vector<int> &ActiveVerts, int &ActiveSize, std::vector<float> &Costs, std::vector<int> &CostInds, Matrix<int, Dynamic, Dynamic> Tr, Matrix<float, Dynamic, Dynamic> D, std::vector<int> &NeighbourVerts, std::vector<int> &ActiveNeighbourVerts, std::vector<int> &NeighbourRingIndex, int CurrentFrame, std::vector<float> &CaArrayNew, std::vector<float> &CaArrayOld);
+void SimpleStoreNeighbourVerts(Matrix<int, Dynamic, Dynamic> Tr, int P_index, std::vector<int> &NeighbourVerts, std::vector<int> StaticActiveVerts);
+float square(float a);
 
 int main(int argc, char* argv[])
 {
 	string line;
 	Matrix<float, Dynamic, Dynamic> D;
+	Matrix<float, Dynamic, Dynamic> Dreceived;
+	Matrix<float, Dynamic, Dynamic> DeltaCoord;
 	Matrix<int, Dynamic, Dynamic> Tr;
+
 	std::vector<int> ActiveVerts; // 1 if active, 0 if inactive
+	std::vector<int> StaticActiveVerts; // 1 if active, 0 if inactive
 	std::vector<float> CaArrayOld;
 	std::vector<float> CaArrayNew;
 	std::vector<float> Costs;
 	std::vector<int> CostInds;
-	std::vector<float> Lengths; //for node clustering
-	std::vector<int> LengthInds;
 	std::vector<int> NeighbourVerts;
 	std::vector<int> NeighbourRingIndex;
 	std::vector<int> ActiveNeighbourVerts;
+	std::vector<float> sortedDelta;
+	std::vector<int> DeltaInds;
+
 	D.resize(3 * f, N);  //all verts
 	Tr.resize(3 * f, M); //all triangles
+	DeltaCoord.resize(3 * f, N);
+	Dreceived.resize(3 * f, N);  //received verts
 	int ActiveSize = N;
+	int StaticActiveSize;
+
+	float StaticError = 0;
+	float DynamicError = 0;
 
 	//Load from files
 	{
@@ -121,7 +134,7 @@ int main(int argc, char* argv[])
 
 					v = stoi(line);
 
-					Tr(3 * i, j) = v;
+					Tr(3 * i, j) = v - 1; //in the file indexing starts from 1 instead of 0
 				}
 			}
 			myfile1.close();
@@ -141,7 +154,7 @@ int main(int argc, char* argv[])
 
 					v = stoi(line);
 
-					Tr(3 * i + 1, j) = v;
+					Tr(3 * i + 1, j) = v - 1; //in the file indexing starts from 1 instead of 0
 				}
 			}
 			myfile2.close();
@@ -161,7 +174,7 @@ int main(int argc, char* argv[])
 
 					v = stoi(line);
 
-					Tr(3 * i + 2, j) = v;
+					Tr(3 * i + 2, j) = v - 1; //in the file indexing starts from 1 instead of 0
 				}
 			}
 			myfile3.close();
@@ -169,94 +182,156 @@ int main(int argc, char* argv[])
 		else std::cout << "fooey\n";
 	}
 
-
-	//create active vertex array for the first frame
-	for (int i = 0; i < N; i++)
-	{
-		ActiveVerts.push_back(1);
-		CaArrayOld.push_back(0);
-		CaArrayNew.push_back(0);
-		Costs.push_back(0);
-		CostInds.push_back(i);
-		Lengths.push_back(0);
-		LengthInds.push_back(i);
-	}
-
-	//first decimation (vert chosen randomly for decimation)
-	ActiveVerts[0] = 0;
-	ActiveSize--;
-
 	//eventually it will happen for every frame
 	int CurrentFrame = 0;
 
 
-	///////////////////////////////////////////////////////////////////////////////
-	for (int i = 0; i < N; i++)
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//Static Approximation
 	{
-		vec Xo(D(3 * CurrentFrame, i), D(3 * CurrentFrame + 1, i), D(3 * CurrentFrame + 2, i));
-		for (int j = 0; j < N; j++)
+		//ENCODER PART
+
+		for (int i = 0; i < N; i++)
+		{
+			StaticActiveVerts.push_back(1);
+		}
+
+		//calculate d coordinates
+		for (int i = 0; i < N; i++)
+		{
+			SimpleStoreNeighbourVerts(Tr, i, NeighbourVerts, StaticActiveVerts);
+			vec Mean(0, 0, 0);
+			vec Point(D(3 * CurrentFrame, i), D(3 * CurrentFrame + 1, i), D(3 * CurrentFrame + 2, i));
+
+			for (int j = 0; j < NeighbourVerts.size(); j++)
+			{
+				vec temp(D(3 * CurrentFrame, NeighbourVerts[j]), D(3 * CurrentFrame + 1, NeighbourVerts[j]), D(3 * CurrentFrame + 2, NeighbourVerts[j]));
+				Mean += temp;
+			}
+
+			//write D Coordinates 
+			DeltaCoord(3 * CurrentFrame + 0, i) = Point.x - (Mean.x / NeighbourVerts.size());
+			DeltaCoord(3 * CurrentFrame + 1, i) = Point.y - (Mean.y / NeighbourVerts.size());
+			DeltaCoord(3 * CurrentFrame + 2, i) = Point.z - (Mean.z / NeighbourVerts.size());
+
+			sortedDelta.push_back(vec(DeltaCoord(3 * CurrentFrame + 0, i), DeltaCoord(3 * CurrentFrame + 1, i), DeltaCoord(3 * CurrentFrame + 2, i)).LengthSq());
+			DeltaInds.push_back(i);
+		}
+
+		quickSort(sortedDelta, DeltaInds, 0, N - 1);
+
+		StaticActiveVerts.clear();
+
+		//Statically set active verts, when half the verts are active
+		for (int i = 0; i < N; i++)
+		{
+			StaticActiveVerts.push_back(0);
+		}
+
+		StaticActiveSize = N / 2;
+		for (int i = 0; i < StaticActiveSize; i++)
+		{
+			StaticActiveVerts[DeltaInds[i]] = 1;
+		}
+
+		//create the matrix that will be sent
+		for (int i = 0; i < N; i++)
+		{
+			if (StaticActiveVerts[i])
+			{
+				Dreceived(3 * CurrentFrame + 0, i) = D(3 * CurrentFrame + 0, i);
+				Dreceived(3 * CurrentFrame + 1, i) = D(3 * CurrentFrame + 1, i);
+				Dreceived(3 * CurrentFrame + 2, i) = D(3 * CurrentFrame + 2, i);
+			}
+
+		}
+
+
+		//DECODER PART
+
+		//reconstruction
+		for (int i = 0; i < N; i++)
+		{
+			if (!StaticActiveVerts[i])
+			{
+				SimpleStoreNeighbourVerts(Tr, i, NeighbourVerts, StaticActiveVerts);
+				vec Mean(0, 0, 0);
+
+				for (int j = 0; j < NeighbourVerts.size(); j++)
+				{
+					vec point(Dreceived(3 * CurrentFrame + 0, NeighbourVerts[j]), Dreceived(3 * CurrentFrame + 1, NeighbourVerts[j]), Dreceived(3 * CurrentFrame + 2, NeighbourVerts[j]));
+					Mean += point;
+				}
+				Mean /= NeighbourVerts.size();
+
+
+				Dreceived(3 * CurrentFrame + 0, i) = Mean.x;
+				Dreceived(3 * CurrentFrame + 1, i) = Mean.y;
+				Dreceived(3 * CurrentFrame + 2, i) = Mean.z;
+			}
+		}
+
+		//calculate Error = Sum((D-Dreceived)^2)
+		for (int i = 0; i < N; i++)
+		{
+			StaticError += square(D(3 * CurrentFrame + 0, i) - Dreceived(3 * CurrentFrame + 0, i)) +
+						   square(D(3 * CurrentFrame + 1, i) - Dreceived(3 * CurrentFrame + 1, i)) +
+						   square(D(3 * CurrentFrame + 2, i) - Dreceived(3 * CurrentFrame + 2, i));
+		}
+	}
+
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//Dynamic Approximation
+	{
+		//create active vertex array for the first frame
+		for (int i = 0; i < N; i++)
+		{
+			ActiveVerts.push_back(1);
+			CaArrayOld.push_back(0);
+			CaArrayNew.push_back(0);
+			Costs.push_back(0);
+			CostInds.push_back(i);
+		}
+
+		//first decimation (vert chosen randomly for decimation)
+		ActiveVerts[0] = 0;
+		ActiveSize--;
+
+		for (int i = 0; i < N; i++)
 		{
 			if (ActiveVerts[i])
 			{
-				vec Xi(D(3 * CurrentFrame, j), D(3 * CurrentFrame + 1, j), D(3 * CurrentFrame + 2, j));
-				Lengths[j] = (Xo.x - Xi.x)*(Xo.x - Xi.x) + (Xo.y - Xi.y)*(Xo.y - Xi.y) + (Xo.z - Xi.z)*(Xo.z - Xi.z);
+				int flag = 0;
+				StoreNeighbourVerts(Tr, D, i, NeighbourVerts, NeighbourRingIndex, ActiveNeighbourVerts, ActiveVerts, CurrentFrame, flag);
+				int maxRing = 0;
+				for (int j = 0; j < NeighbourRingIndex.size(); j++)
+				{
+					maxRing = (NeighbourRingIndex[j] > maxRing) ? NeighbourRingIndex[j] : maxRing;
+				}
+				CaArrayNew[i] = Ca(NeighbourVerts, ActiveNeighbourVerts, NeighbourRingIndex, maxRing);
+				ActiveNeighbourVerts.clear();
+				NeighbourVerts.clear();
+				NeighbourRingIndex.clear();
 			}
 		}
-		quickSort(Lengths, LengthInds, 0, Lengths.size() - 1);
 
-		int K = 10;
-		for (int j = 1; j < K; j++) //start from 1 to exclude itself
+		for (int i = 0; i < N; i++)
 		{
-			if (ActiveVerts[LengthInds[j]])
+			if (ActiveVerts[i])
 			{
-				ActiveNeighbourVerts.push_back(LengthInds[j]);
-			}
-			else K++;
-
-
-			if (j == K - 1 && ActiveNeighbourVerts.size() < 3)
-			{
-				K++;
+				Costs[i] = CaArrayNew[i] + 0.8 * Cb(CaArrayOld, CaArrayNew, ActiveSize, ActiveNeighbourVerts);
 			}
 		}
-		//elen3e an ta prwta k shmeia anhkoun sta idia trigwna kai einai energa. Gia ka8e anenergo shmeio sta prwta sorted shmeia au3hse to k kata 1.
-	}
-	///////////////////////////////////////////////////////////////////////////////
-	for (int i = 0; i < N; i++)
-	{
-		if (ActiveVerts[i])
+
+		quickSort(Costs, CostInds, 0, N - 1);
+
+		//decimate until half verts have been decimated for testing purposes
+		for (int i = 0; i < (int)(N / 2); i++)
 		{
-			int flag = 0;
-			//den proxwraei se 2o ring edw, alla pairnei polu xrono kai kollaei logw xwrou(?)
-			StoreNeighbourVerts(Tr, D, i, NeighbourVerts, NeighbourRingIndex, ActiveNeighbourVerts, ActiveVerts, CurrentFrame, flag);
-			int maxRing = 0;
-			for (int j = 0; j < NeighbourRingIndex.size(); j++)
-			{
-				maxRing = (NeighbourRingIndex[j] > maxRing) ? NeighbourRingIndex[j] : maxRing;
-			}
-			CaArrayNew[i] = Ca(NeighbourVerts, ActiveNeighbourVerts, NeighbourRingIndex, maxRing);
-			ActiveNeighbourVerts.clear();
-			NeighbourVerts.clear();
-			NeighbourRingIndex.clear();
+			decimate(ActiveVerts, ActiveSize, Costs, CostInds, Tr, D, NeighbourVerts, ActiveNeighbourVerts, NeighbourRingIndex, CurrentFrame, CaArrayNew, CaArrayOld);
 		}
+
 	}
-
-	for (int i = 0; i < N; i++)
-	{
-		if (ActiveVerts[i])
-		{
-			Costs[i] = CaArrayNew[i] + 0.8 * Cb(CaArrayOld, CaArrayNew, ActiveSize, ActiveNeighbourVerts);
-		}
-	}
-
-	quickSort(Costs, CostInds, 0, N - 1);
-
-	//decimate until half verts have been decimated for testing purposes
-	for (int i = 0; i < (int)(N / 2); i++)
-	{
-		decimate(ActiveVerts, ActiveSize, Costs, CostInds, Tr, D, NeighbourVerts, ActiveNeighbourVerts, NeighbourRingIndex, CurrentFrame, CaArrayNew, CaArrayOld);
-	}
-
 
 }
 
@@ -332,6 +407,58 @@ void StoreNeighbourVerts(Matrix<int, Dynamic, Dynamic> Tr, Matrix<float, Dynamic
 
 		if (i >= ActiveNeighbourVerts.size())
 			break;
+	}
+}
+
+//takes as input the index to a point and stores the indices to its neighbors
+void SimpleStoreNeighbourVerts(Matrix<int, Dynamic, Dynamic> Tr, int P_index, std::vector<int> &NeighbourVerts, std::vector<int> StaticActiveVerts)
+{
+	int CurrentFrame = 0;
+	NeighbourVerts.clear();
+
+	for (int i = 0; i < M; i++)
+	{
+		if (Tr(3 * CurrentFrame + 0, i) == P_index)
+		{
+			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 1, i));
+			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 2, i));
+		}
+
+		if (Tr(3 * CurrentFrame + 1, i) == P_index)
+		{
+			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 0, i));
+			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 2, i));
+		}
+
+		if (Tr(3 * CurrentFrame + 2, i) == P_index)
+		{
+			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 0, i));
+			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 1, i));
+		}
+	}
+
+
+	//delete inactives
+	for (int i = 0; i < NeighbourVerts.size(); i++)
+	{
+		if(!StaticActiveVerts[NeighbourVerts[i]])
+			NeighbourVerts.erase(NeighbourVerts.begin() + i--);//decreases i counter in case two sequential verts are inactive
+	}
+
+	//deletes doubles
+	for (int i = 0; i < NeighbourVerts.size(); i++)
+	{
+		for (int j = i; j < NeighbourVerts.size(); j++)
+		{
+			if (i != j && NeighbourVerts[i] == NeighbourVerts[j])
+			{
+				NeighbourVerts.erase(NeighbourVerts.begin() + j);
+
+				j--;
+			}
+			if (i >= NeighbourVerts.size() || j >= NeighbourVerts.size()) break;
+		}
+		if (i >= NeighbourVerts.size()) break;
 	}
 }
 
@@ -492,4 +619,10 @@ void quickSort(std::vector<float> &arr, std::vector<int> &indices, int left, int
 	if (i < right)
 		quickSort(arr, indices, i, right);
 
+}
+
+//square function
+float square(float a)
+{
+	return a * a;
 }
