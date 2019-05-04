@@ -8,6 +8,8 @@
 #include <vector>
 #include <MathGeoLib.h>
 #include <cmath>
+#include <time.h>      
+#include "MyMatrix.h"
 
 
 using namespace std;
@@ -16,48 +18,67 @@ using namespace Eigen;
 
 #define N 10002
 #define M 20000
-#define f 1 //change to 175 for all frames 
+#define f 10 //change to 175 for all frames 
+#define k 50 //arbitrary limit
 
 
-void StoreNeighbourVerts(Matrix<int, Dynamic, Dynamic> Tr, Matrix<float, Dynamic, Dynamic> D, int P_index, std::vector<int> &NeighbourVerts, std::vector<int> &NeighbourRingIndex, std::vector<int> &ActiveNeighbourVerts, std::vector<int> ActiveVerts, int CurrentFrame, int flag);
 void DeleteDoubles(std::vector<int> &NeighbourVerts, std::vector<int> &NeighbourRingIndex);
-void IgnoreInactives(std::vector<int> &NeighbourVerts, std::vector<int> &ActiveNeighbourVerts, std::vector<int> ActiveVerts);
-float Ca(std::vector<int> &NeighbourVerts, std::vector<int> &ActiveNeighbourVerts, std::vector<int> NeighbourRingIndex, int maxRing);
-float Cb(std::vector<float> oldCa, std::vector<float> newCa, int ActiveSize, std::vector<int> &ActiveNeighbourVerts);
 void quickSort(std::vector<float> &arr, std::vector<int> &indices, int left, int right);
-void decimate(std::vector<int> &ActiveVerts, int &ActiveSize, std::vector<float> &Costs, std::vector<int> &CostInds, Matrix<int, Dynamic, Dynamic> Tr, Matrix<float, Dynamic, Dynamic> D, std::vector<int> &NeighbourVerts, std::vector<int> &ActiveNeighbourVerts, std::vector<int> &NeighbourRingIndex, int CurrentFrame, std::vector<float> &CaArrayNew, std::vector<float> &CaArrayOld);
-void SimpleStoreNeighbourVerts(Matrix<int, Dynamic, Dynamic> Tr, int P_index, std::vector<int> &NeighbourVerts, std::vector<int> StaticActiveVerts);
+void SimpleStoreNeighbourVerts(Matrix<int, Dynamic, Dynamic> Tr, int P_index, std::vector<int> &NeighbourVerts);
 float square(float a);
 
 int main(int argc, char* argv[])
 {
 	string line;
 	Matrix<float, Dynamic, Dynamic> D;
-	Matrix<float, Dynamic, Dynamic> Dreceived;
-	Matrix<float, Dynamic, Dynamic> DeltaCoord;
 	Matrix<int, Dynamic, Dynamic> Tr;
+	Matrix<float, Dynamic, Dynamic> DeltaCoord;
+	Matrix<float, Dynamic, Dynamic> DeltaSent;
+	Matrix<float, Dynamic, Dynamic> AnchorPoints;
 
-	std::vector<int> ActiveVerts; // 1 if active, 0 if inactive
-	std::vector<int> StaticActiveVerts; // 1 if active, 0 if inactive
-	std::vector<float> CaArrayOld;
-	std::vector<float> CaArrayNew;
-	std::vector<float> Costs;
-	std::vector<int> CostInds;
-	std::vector<int> NeighbourVerts;
-	std::vector<int> NeighbourRingIndex;
-	std::vector<int> ActiveNeighbourVerts;
-	std::vector<float> sortedDelta;
-	std::vector<int> DeltaInds;
+	//Matrix<float, Dynamic, Dynamic> In;
+	Matrix<float, Dynamic, Dynamic> C;
+	Matrix<float, Dynamic, Dynamic> D_;
+	Matrix<float, Dynamic, Dynamic> L;
+	Matrix<float, Dynamic, Dynamic> A;
+	Matrix<float, Dynamic, Dynamic> b;
+	Matrix<float, Dynamic, Dynamic> x;
+	Matrix<float, Dynamic, Dynamic> Dresult;
 
-	D.resize(3 * f, N);  //all verts
-	Tr.resize(3 * f, M); //all triangles
-	DeltaCoord.resize(3 * f, N);
-	Dreceived.resize(3 * f, N);  //received verts
-	int ActiveSize = N;
-	int StaticActiveSize;
+	Matrix<float, Dynamic, Dynamic> A1;
+	Matrix<float, Dynamic, Dynamic> A2;
+	Matrix<float, Dynamic, Dynamic> F1;
+	Matrix<float, Dynamic, Dynamic> F2;
+	Matrix<float, Dynamic, Dynamic> E1;
+	Matrix<float, Dynamic, Dynamic> E2;
+	Matrix<float, Dynamic, Dynamic> temp;
 
-	float StaticError = 0;
-	float DynamicError = 0;
+	vector<int> NeighbourVerts;
+	vector<float> sortedDelta;
+	vector<int> DeltaInds;
+	vector<int> DeltaSentInds;
+	vector<int> AnchorInds;
+
+
+	D.resize(3 * f, N);					//all verts
+	Tr.resize(3, M);					//all triangles
+	DeltaCoord.resize(3, N);			//first frame delta coordinates
+
+	//In.resize(N, N); //identity matrix
+	//D_.resize(N, N);  //diagonal matrix
+	C.resize(N, N);  //connectivity matrix
+	L.resize(N, N);  //Laplacian matrix
+
+	srand(time(NULL));
+
+
+	/////////////////////////////////////for inversion
+	vector<double> row;
+	vector<vector<double> > m;
+	vector<double> Ddiagonal;
+	/////////////////////////////////////
+
+	
 
 	//Load from files
 	{
@@ -124,18 +145,15 @@ int main(int argc, char* argv[])
 		ifstream myfile1("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Tris1.txt");
 		if (myfile1)
 		{
-			for (int i = 0; i < f; i++)
+			for (int j = 0; j < M; j++)
 			{
-				for (int j = 0; j < M; j++)
-				{
-					(getline(myfile1, line));
-					int v;
-					string s;
+				(getline(myfile1, line));
+				int v;
+				string s;
 
-					v = stoi(line);
+				v = stoi(line);
 
-					Tr(3 * i, j) = v - 1; //in the file indexing starts from 1 instead of 0
-				}
+				Tr(0, j) = v - 1; //in the file indexing starts from 1 instead of 0
 			}
 			myfile1.close();
 		}
@@ -144,18 +162,15 @@ int main(int argc, char* argv[])
 		ifstream myfile2("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Tris2.txt");
 		if (myfile2)
 		{
-			for (int i = 0; i < f; i++)
+			for (int j = 0; j < M; j++)
 			{
-				for (int j = 0; j < M; j++)
-				{
-					(getline(myfile2, line));
-					int v;
-					string s;
+				(getline(myfile2, line));
+				int v;
+				string s;
 
-					v = stoi(line);
+				v = stoi(line);
 
-					Tr(3 * i + 1, j) = v - 1; //in the file indexing starts from 1 instead of 0
-				}
+				Tr(1, j) = v - 1; //in the file indexing starts from 1 instead of 0
 			}
 			myfile2.close();
 		}
@@ -164,254 +179,288 @@ int main(int argc, char* argv[])
 		ifstream myfile3("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Tris3.txt");
 		if (myfile3)
 		{
-			for (int i = 0; i < f; i++)
+			for (int j = 0; j < M; j++)
 			{
-				for (int j = 0; j < M; j++)
-				{
-					(getline(myfile3, line));
-					int v;
-					string s;
+				(getline(myfile3, line));
+				int v;
+				string s;
 
-					v = stoi(line);
+				v = stoi(line);
 
-					Tr(3 * i + 2, j) = v - 1; //in the file indexing starts from 1 instead of 0
-				}
+				Tr(2, j) = v - 1; //in the file indexing starts from 1 instead of 0
 			}
 			myfile3.close();
 		}
 		else std::cout << "fooey\n";
 	}
 
-	//eventually it will happen for every frame
-	int CurrentFrame = 0;
 
+	//In, D, C
+	for (int i = 0; i < N; i++)
+	{
+		for (int j = 0; j < N; j++)
+		{
+			C(i, j) = 0;
+
+			if (i != j)
+			{
+				L(i, j) = 0;
+				//D_(i, j) = 1;
+			}
+			else L(i, j) = 1;
+		}
+	}
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////
-	//Static Approximation
-	{
-		//ENCODER PART
+	
+		//ENCODER
 
-		for (int i = 0; i < N; i++)
 		{
-			StaticActiveVerts.push_back(1);
-		}
-
-		//calculate d coordinates
-		for (int i = 0; i < N; i++)
-		{
-			SimpleStoreNeighbourVerts(Tr, i, NeighbourVerts, StaticActiveVerts);
-			vec Mean(0, 0, 0);
-			vec Point(D(3 * CurrentFrame, i), D(3 * CurrentFrame + 1, i), D(3 * CurrentFrame + 2, i));
-
-			for (int j = 0; j < NeighbourVerts.size(); j++)
+			//determine features
+			for (int i = 0; i < N; i++)
 			{
-				vec temp(D(3 * CurrentFrame, NeighbourVerts[j]), D(3 * CurrentFrame + 1, NeighbourVerts[j]), D(3 * CurrentFrame + 2, NeighbourVerts[j]));
-				Mean += temp;
-			}
-
-			//write D Coordinates 
-			DeltaCoord(3 * CurrentFrame + 0, i) = Point.x - (Mean.x / NeighbourVerts.size());
-			DeltaCoord(3 * CurrentFrame + 1, i) = Point.y - (Mean.y / NeighbourVerts.size());
-			DeltaCoord(3 * CurrentFrame + 2, i) = Point.z - (Mean.z / NeighbourVerts.size());
-
-			sortedDelta.push_back(vec(DeltaCoord(3 * CurrentFrame + 0, i), DeltaCoord(3 * CurrentFrame + 1, i), DeltaCoord(3 * CurrentFrame + 2, i)).LengthSq());
-			DeltaInds.push_back(i);
-		}
-
-		quickSort(sortedDelta, DeltaInds, 0, N - 1);
-
-		StaticActiveVerts.clear();
-
-		//Statically set active verts, when half the verts are active
-		for (int i = 0; i < N; i++)
-		{
-			StaticActiveVerts.push_back(0);
-		}
-
-		StaticActiveSize = N / 2;
-		for (int i = 0; i < StaticActiveSize; i++)
-		{
-			StaticActiveVerts[DeltaInds[i]] = 1;
-		}
-
-		//create the matrix that will be sent
-		for (int i = 0; i < N; i++)
-		{
-			if (StaticActiveVerts[i])
-			{
-				Dreceived(3 * CurrentFrame + 0, i) = D(3 * CurrentFrame + 0, i);
-				Dreceived(3 * CurrentFrame + 1, i) = D(3 * CurrentFrame + 1, i);
-				Dreceived(3 * CurrentFrame + 2, i) = D(3 * CurrentFrame + 2, i);
-			}
-
-		}
-
-
-		//DECODER PART
-
-		//reconstruction
-		for (int i = 0; i < N; i++)
-		{
-			if (!StaticActiveVerts[i])
-			{
-				SimpleStoreNeighbourVerts(Tr, i, NeighbourVerts, StaticActiveVerts);
-				vec Mean(0, 0, 0);
+				NeighbourVerts.clear();
+				SimpleStoreNeighbourVerts(Tr, i, NeighbourVerts);
+				//D_(i, i) = NeighbourVerts.size();
+				Ddiagonal.push_back(NeighbourVerts.size());
 
 				for (int j = 0; j < NeighbourVerts.size(); j++)
 				{
-					vec point(Dreceived(3 * CurrentFrame + 0, NeighbourVerts[j]), Dreceived(3 * CurrentFrame + 1, NeighbourVerts[j]), Dreceived(3 * CurrentFrame + 2, NeighbourVerts[j]));
-					Mean += point;
+					C(i, NeighbourVerts[j]) = 1;
 				}
-				Mean /= NeighbourVerts.size();
 
+				vec Mean(0, 0, 0);
+				vec Point(D(0, i), D(1, i), D(2, i));
 
-				Dreceived(3 * CurrentFrame + 0, i) = Mean.x;
-				Dreceived(3 * CurrentFrame + 1, i) = Mean.y;
-				Dreceived(3 * CurrentFrame + 2, i) = Mean.z;
-			}
-		}
-
-		//calculate Error = Sum((D-Dreceived)^2)
-		for (int i = 0; i < N; i++)
-		{
-			StaticError += square(D(3 * CurrentFrame + 0, i) - Dreceived(3 * CurrentFrame + 0, i)) +
-						   square(D(3 * CurrentFrame + 1, i) - Dreceived(3 * CurrentFrame + 1, i)) +
-						   square(D(3 * CurrentFrame + 2, i) - Dreceived(3 * CurrentFrame + 2, i));
-		}
-	}
-
-	///////////////////////////////////////////////////////////////////////////////////////////////////////////
-	//Dynamic Approximation
-	{
-		//create active vertex array for the first frame
-		for (int i = 0; i < N; i++)
-		{
-			ActiveVerts.push_back(1);
-			CaArrayOld.push_back(0);
-			CaArrayNew.push_back(0);
-			Costs.push_back(0);
-			CostInds.push_back(i);
-		}
-
-		//first decimation (vert chosen randomly for decimation)
-		ActiveVerts[0] = 0;
-		ActiveSize--;
-
-		for (int i = 0; i < N; i++)
-		{
-			if (ActiveVerts[i])
-			{
-				int flag = 0;
-				StoreNeighbourVerts(Tr, D, i, NeighbourVerts, NeighbourRingIndex, ActiveNeighbourVerts, ActiveVerts, CurrentFrame, flag);
-				int maxRing = 0;
-				for (int j = 0; j < NeighbourRingIndex.size(); j++)
+				for (int j = 0; j < NeighbourVerts.size(); j++)
 				{
-					maxRing = (NeighbourRingIndex[j] > maxRing) ? NeighbourRingIndex[j] : maxRing;
+					vec temp(D(0, NeighbourVerts[j]), D(1, NeighbourVerts[j]), D(2, NeighbourVerts[j]));
+					Mean += temp;
 				}
-				CaArrayNew[i] = Ca(NeighbourVerts, ActiveNeighbourVerts, NeighbourRingIndex, maxRing);
-				ActiveNeighbourVerts.clear();
-				NeighbourVerts.clear();
-				NeighbourRingIndex.clear();
-			}
-		}
 
-		for (int i = 0; i < N; i++)
-		{
-			if (ActiveVerts[i])
+				DeltaCoord(0, i) = Point.x - (Mean.x / NeighbourVerts.size());
+				DeltaCoord(1, i) = Point.y - (Mean.y / NeighbourVerts.size());
+				DeltaCoord(2, i) = Point.z - (Mean.z / NeighbourVerts.size());
+
+				sortedDelta.push_back(vec(DeltaCoord(0, i), DeltaCoord(1, i), DeltaCoord(2, i)).LengthSq());
+				DeltaInds.push_back(i);
+			}
+			quickSort(sortedDelta, DeltaInds, 0, N - 1);
+
+			////invert D_
+			//for (int i = 0; i < N; i++) 
+			//{
+			//	row.clear();
+			//	for (int j = 0; j < N; j++) 
+			//	{
+
+			//		row.push_back(D_(i,j));
+			//	}
+			//	m.push_back(row);
+			//}
+
+			vector<vector<double> > result;
+			result = MyMatrix::inverse(Ddiagonal);//23.5 mins
+			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+			D_.resize(N, N);
+			for (int i = 0; i < N; i++) 
 			{
-				Costs[i] = CaArrayNew[i] + 0.8 * Cb(CaArrayOld, CaArrayNew, ActiveSize, ActiveNeighbourVerts);
+				for (int j = 0; j < N; j++) 
+				{
+					D_(i, j) = result[i][j];	//check if result[i][j] or result[j][i]
+				}
 			}
-		}
 
-		quickSort(Costs, CostInds, 0, N - 1);
+			//create Laplacian matrix
+			L = L - D_ * C;
+			
 
-		//decimate until half verts have been decimated for testing purposes
-		for (int i = 0; i < (int)(N / 2); i++)
-		{
-			decimate(ActiveVerts, ActiveSize, Costs, CostInds, Tr, D, NeighbourVerts, ActiveNeighbourVerts, NeighbourRingIndex, CurrentFrame, CaArrayNew, CaArrayOld);
-		}
-
-	}
-
-}
+			//resize for memory management
+			Tr.resize(0, 0);
+			//In.resize(0, 0);
+			D_.resize(0, 0);
+			C.resize(0, 0);
+			DeltaSent.resize(3 * f, k);			//k delta coordinates per frame
+			AnchorPoints.resize(3 * f, k);		//k anchor points per frame
 
 
-//takes as input the index to a point and stores the indices to its neighbors
-void StoreNeighbourVerts(Matrix<int, Dynamic, Dynamic> Tr, Matrix<float, Dynamic, Dynamic> D, int P_index, std::vector<int> &NeighbourVerts, std::vector<int> &NeighbourRingIndex, std::vector<int> &ActiveNeighbourVerts, std::vector<int> ActiveVerts, int CurrentFrame, int flag)
-{
-	flag++ ; //if flag doesn't work well, define it as a global variable and initialize it here, as mentioned later
 
-	//go through all verts and add the 1-ring neighbours to a list and also add the ring distance of every neighbour to another list
-	for (int i = 0; i < M; i++)
-	{
-		int check = 0;
-		if (Tr(3 * CurrentFrame + 0, i) == P_index)
-		{
-			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 1, i));
-			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 2, i));
-
-			//contains the ring distance of each neighbour
-			NeighbourRingIndex.push_back(flag);
-			NeighbourRingIndex.push_back(flag);
-		}
-
-		if (Tr(3 * CurrentFrame + 1, i) == P_index)
-		{
-			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 0, i));
-			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 2, i));
-
-			//contains the ring distance of each neighbour
-			NeighbourRingIndex.push_back(flag);
-			NeighbourRingIndex.push_back(flag);
-		}
-
-		if (Tr(3 * CurrentFrame + 2, i) == P_index)
-		{
-			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 0, i));
-			NeighbourVerts.push_back(Tr(3 * CurrentFrame + 1, i));
-
-			//contains the ring distance of each neighbour
-			NeighbourRingIndex.push_back(flag);
-			NeighbourRingIndex.push_back(flag);
-		}
-	}
-
-	DeleteDoubles(NeighbourVerts, NeighbourRingIndex);
-	IgnoreInactives(NeighbourVerts, ActiveNeighbourVerts, ActiveVerts);
-
-	for (int ring_count = 0; ring_count < 3; ring_count++)	//go up to 3-ring neighbours
-	{
-		if (ActiveNeighbourVerts.size() < 3)
-		{
-			flag++;
-			for (int i = 0; i < NeighbourVerts.size(); i++)
+			//calculate and store important delta coordinates
+			for (int i = 0; i < f; i++)
 			{
-				StoreNeighbourVerts(Tr, D, NeighbourVerts[i], NeighbourVerts, NeighbourRingIndex, ActiveNeighbourVerts, ActiveVerts, CurrentFrame, flag);
+				for (int j = 0; j < k; j++)
+				{
+					vec Delta;
+					vec Mean(0, 0, 0);
+					vec Point(D(3 * i + 0, DeltaInds[N - 1 - j]), D(3 * i + 1, DeltaInds[N - 1 - j]), D(3 * i + 2, DeltaInds[N - 1 - j]));
+
+					int counter = 0;
+					for (int u = 0; u < N; u++)
+					{
+						if (C(DeltaInds[N - 1 - j], u))
+						{
+							vec temp(D(3 * f, DeltaInds[N - 1 - j]), D(3 * f + 1, DeltaInds[N - 1 - j]), D(3 * f + 2, DeltaInds[N - 1 - j]));
+							Mean += temp;
+							counter++;
+						}
+					}
+					DeltaSent(3 * i + 0, j) = Point.x - (Mean.x / counter);
+					DeltaSent(3 * i + 1, j) = Point.y - (Mean.y / counter);
+					DeltaSent(3 * i + 2, j) = Point.z - (Mean.z / counter);
+
+					DeltaSentInds.push_back(DeltaInds[N - 1 - j]);
+				}
 			}
 
-			DeleteDoubles(NeighbourVerts, NeighbourRingIndex);
-			IgnoreInactives(NeighbourVerts, ActiveNeighbourVerts, ActiveVerts);
 
-			//not sure if the static flag command will make the flag never be reinitialized again and we will end up with the flag going over 3. If so make flag global
+			//resize
+			DeltaCoord.resize(0, 0);
+			A1.resize(3 * f, 3 * f);			//A of deltas
+			A2.resize(3 * f, 3 * f);			//A of anchor points
+			E1.resize(3 * f, k);
+			E2.resize(3 * f, k);
+			F1.resize(k, k);
+			F2.resize(k, k);
+
+
+			//PCA for delta coordinates
+			A1 = DeltaSent * DeltaSent.transpose() / (3 * f);
+			BDCSVD<MatrixXf> svd1(A1, ComputeFullU);
+			temp.resize(3 * f, 3 * f);
+			temp = svd1.matrixU();
+
+			for (int i = 0; i < 3 * f; i++)
+			{
+				for (int j = 0; j < k; j++)
+				{
+					E1(3 * i, j) = temp(3 * i, j);
+				}
+			}
+			F1 = E1.transpose() * DeltaSent;
+
+
+			//choose random anchor points
+			for (int i = 0; i < k; i++)
+			{
+				int v = rand() % N;		// v1 in the range 0 to N-1
+				for (int j = 0; j < f; j++)
+				{
+					AnchorPoints(3 * j + 0, i) = D(3 * j + 0, v);
+					AnchorPoints(3 * j + 1, i) = D(3 * j + 1, v);
+					AnchorPoints(3 * j + 2, i) = D(3 * j + 2, v);
+				}
+				AnchorInds.push_back(v);
+			}
+
+			//PCA for anchor points
+			A2 = AnchorPoints * AnchorPoints.transpose() / (3 * f);
+			BDCSVD<MatrixXf> svd2(A2, ComputeFullU);
+			temp.resize(3 * f, 3 * f);
+			temp = svd2.matrixU();
+
+			for (int i = 0; i < 3 * f; i++)
+			{
+				for (int j = 0; j < k; j++)
+				{
+					E2(3 * i, j) = temp(3 * i, j);
+				}
+			}
+			F2 = E2.transpose() * AnchorPoints;
 		}
-	}
+
+		//resize
+		A1.resize(0, 0);
+		A2.resize(0, 0);
+
+
+
+		//DECODER 
+
+		{
+			//receive F1, E1, F2, E2, DeltaSentInds, AnchorInds
+			DeltaSent = E1 * F1;
+			AnchorPoints = E2 * F2;
+
+			//reconstruction
+			A.resize(N + k, N);
+			for (int i = 0; i < N; i++)
+			{
+				for (int j = 0; j < N; j++)
+				{
+					A(j, i) = L(j, i);
+				}
+
+				for (int j = N; j < N + k; j++)
+				{
+					A(j, i) = 0;
+				}
+
+				for (int j = 0; j < k; j++)
+				{
+					A(j + N, AnchorInds[j]) = 1;
+				}
+			}
+
+			b.resize(N + k, 3 * f);
+
+			for (int i = 0; i < N + k; i++)
+			{
+				for (int j = 0; j < N; j++)
+				{
+					b(i, j) = 0;
+				}
+			}
+
+			for (int i = 0; i < k; i++)
+			{
+				for (int j = 0; j < f; j++)
+				{
+					b(DeltaSentInds[i], 3 * f + 0) = DeltaSent(3 * f + 0, i);
+					b(DeltaSentInds[i], 3 * f + 1) = DeltaSent(3 * f + 1, i);
+					b(DeltaSentInds[i], 3 * f + 2) = DeltaSent(3 * f + 2, i);
+
+					b(AnchorInds[i], 3 * f + 0) = AnchorPoints(3 * f + 0, i);
+					b(AnchorInds[i], 3 * f + 1) = AnchorPoints(3 * f + 1, i);
+					b(AnchorInds[i], 3 * f + 2) = AnchorPoints(3 * f + 2, i);
+				}
+			}
+
+			x.resize(N, 3 * f);
+			x = (A.transpose() * A).inverse() * A.transpose() * b;
+			b.resize(0, 0);
+			A.resize(0, 0);
+			temp.resize(N, 3 * f);
+			temp = x;
+			x.resize(3 * f, N);
+			x = temp.transpose();
+
+			std::vector<float> test;
+			for (int i = 0; i < N; i++)
+				test.push_back(x(1, i));
+
+
+			//calculate error
+			float Err = 0;
+			for (int i = 0; i < 3 * f; i++)
+			{
+				for (int j = 0; j < N; j++)
+				{
+					Err += square(D(i, j) - x(i, j));
+				}
+			}
+		}
 	
-	//delete P from Neighbours
 
-	for (int i = 0; i < ActiveNeighbourVerts.size(); i++)
-	{
-		if (ActiveNeighbourVerts[i] == P_index)
-		{
-			ActiveNeighbourVerts.erase(ActiveNeighbourVerts.begin() + i);
-		}
 
-		if (i >= ActiveNeighbourVerts.size())
-			break;
-	}
+	std::cin.get();
+	return 0;
 }
 
+
+
 //takes as input the index to a point and stores the indices to its neighbors
-void SimpleStoreNeighbourVerts(Matrix<int, Dynamic, Dynamic> Tr, int P_index, std::vector<int> &NeighbourVerts, std::vector<int> StaticActiveVerts)
+void SimpleStoreNeighbourVerts(Matrix<int, Dynamic, Dynamic> Tr, int P_index, std::vector<int> &NeighbourVerts)
 {
 	int CurrentFrame = 0;
 	NeighbourVerts.clear();
@@ -437,13 +486,6 @@ void SimpleStoreNeighbourVerts(Matrix<int, Dynamic, Dynamic> Tr, int P_index, st
 		}
 	}
 
-
-	//delete inactives
-	for (int i = 0; i < NeighbourVerts.size(); i++)
-	{
-		if(!StaticActiveVerts[NeighbourVerts[i]])
-			NeighbourVerts.erase(NeighbourVerts.begin() + i--);//decreases i counter in case two sequential verts are inactive
-	}
 
 	//deletes doubles
 	for (int i = 0; i < NeighbourVerts.size(); i++)
@@ -479,100 +521,6 @@ void DeleteDoubles(std::vector<int> &NeighbourVerts, std::vector<int> &Neighbour
 		}
 		if (i >= NeighbourVerts.size()) break;
 	}
-}
-
-void IgnoreInactives(std::vector<int> &NeighbourVerts, std::vector<int> &ActiveNeighbourVerts, std::vector<int> ActiveVerts)
-{
-	//Finds and passes on Active vertices
-	for (int i = 0; i < NeighbourVerts.size(); i++)
-	{
-		if (ActiveVerts[NeighbourVerts[i]])
-			ActiveNeighbourVerts.push_back(NeighbourVerts[i]);
-		else
-		{
-			if (i == 0  && ActiveNeighbourVerts.size())
-				ActiveNeighbourVerts.push_back(-1);		//if first element is inactive make its index -1
-
-			if (i != 0 && ActiveNeighbourVerts.size())
-				ActiveNeighbourVerts.push_back(ActiveNeighbourVerts.size() - 1); //if inactive vert, duplicate the previous entry for later check at cost functions
-		}
-		//example: [0 3 2 2 2 4] 4rth and 5th element are inactive
-	}
-}
-
-float Ca(std::vector<int> &NeighbourVerts, std::vector<int> &ActiveNeighbourVerts, std::vector<int> NeighbourRingIndex, int maxRing)
-{
-	float Cost = 0;
-
-
-	for (int i = 1; i < maxRing; i++)
-	{
-		int Actives = 0;
-		int RingNeigbours = 0;
-
-		for (int j = 1; j < NeighbourVerts.size(); j++)
-		{
-			//Check for duplicate vecs in ActiveNeighbourVerts because that means inactive vert
-			if (ActiveNeighbourVerts[j] != ActiveNeighbourVerts[j - 1] && NeighbourRingIndex[j] == i)
-				Actives++;
-			if (NeighbourRingIndex[j] == i)
-				RingNeigbours++;
-		}
-
-		if(RingNeigbours)
-			Cost += ((RingNeigbours - Actives) / RingNeigbours) * pow(0.6, i);
-	}
-
-	return Cost;
-}
-
-float Cb(std::vector<float> oldCa, std::vector<float> newCa, int ActiveSize, std::vector<int> &ActiveNeighbourVerts)
-{
-	float Cost = 0;
-
-
-	for (int i = 1; i < ActiveSize; i++)
-	{
-		//Check for duplicate vecs in ActiveNeighbourVerts because that means inactive vert
-		if (ActiveNeighbourVerts[i] != ActiveNeighbourVerts[i - 1])
-		{
-			Cost += (oldCa[i] - newCa[i]) / (ActiveSize + 1); 
-		}
-	}
-	return Cost;
-}
-
-void decimate(std::vector<int> &ActiveVerts, int &ActiveSize, std::vector<float> &Costs, std::vector<int> &CostInds, Matrix<int, Dynamic, Dynamic> Tr, Matrix<float, Dynamic, Dynamic> D, std::vector<int> &NeighbourVerts, std::vector<int> &ActiveNeighbourVerts, std::vector<int> &NeighbourRingIndex, int CurrentFrame, std::vector<float> &CaArrayNew, std::vector<float> &CaArrayOld)
-{
-	ActiveVerts[CostInds[N]] = 0; //decimate the verts with the smallest cost
-	ActiveSize--;
-
-	for (int i = 0; i < N; i++)
-	{
-		if (ActiveVerts[i])
-		{
-			int flag = 0;
-			StoreNeighbourVerts(Tr, D, i, NeighbourVerts, NeighbourRingIndex, ActiveNeighbourVerts, ActiveVerts, CurrentFrame, flag);
-			int maxRing = 0;
-			for (int j = 0; j < NeighbourRingIndex.size(); j++)
-			{
-				maxRing = (NeighbourRingIndex[j] > maxRing) ? NeighbourRingIndex[j] : maxRing;
-			}
-			CaArrayNew[i] = Ca(NeighbourVerts, ActiveNeighbourVerts, NeighbourRingIndex, maxRing);
-			ActiveNeighbourVerts.clear();
-			NeighbourVerts.clear();
-		}
-	}
-
-	for (int i = 0; i < N; i++)
-	{
-		if (ActiveVerts[i])
-		{
-			Costs[i] = CaArrayNew[i] + 0.8 * Cb(CaArrayOld, CaArrayNew, ActiveSize, ActiveNeighbourVerts);
-		}
-	}
-
-	quickSort(Costs, CostInds, 0, N - 1);
 }
 
 void quickSort(std::vector<float> &arr, std::vector<int> &indices, int left, int right)
@@ -625,4 +573,160 @@ void quickSort(std::vector<float> &arr, std::vector<int> &indices, int left, int
 float square(float a)
 {
 	return a * a;
+}
+
+vector<vector<double> > operator/(vector<vector<double> > m, double d)
+{
+
+	for (int i = 0; i < (int)m.size(); i++) {
+		for (int j = 0; j < (int)m.size(); j++) {
+			m[i][j] = m[i][j] / d;
+		}
+	}
+
+	return m;
+}
+
+vector<vector<double> > MyMatrix::minor1(int deleteRow, int deleteCol, vector<double> Ddiagonal)
+{
+
+	vector<vector<double> > result;
+	vector<double> row;
+
+	for (int i = 0; i < (int)Ddiagonal.size(); i++) {
+		if (i == deleteRow) continue;
+
+		row.clear();
+		for (int j = 0; j < (int)Ddiagonal.size(); j++) {
+			if (j == deleteCol) continue;
+
+			if (i == j)	row.push_back(Ddiagonal[i]);
+			else row.push_back((double)1);
+		}
+		result.push_back(row);
+	}
+
+	return result;
+	//check if size returns full N*N or just N
+}
+
+vector<vector<double> > MyMatrix::minor2(int deleteRow, int deleteCol, vector<vector<double> > m)
+{
+
+	vector<vector<double> > result;
+	vector<double> row;
+
+	for (int i = 0; i < (int)m.size(); i++) {
+		if (i == deleteRow) continue;
+
+		row.clear();
+		for (int j = 0; j < (int)m.size(); j++) {
+			if (j == deleteCol) continue;
+
+			row.push_back(m[i][j]);
+		}
+		result.push_back(row);
+	}
+
+	return result;
+	//check if size returns full N*N or just N
+}
+
+double MyMatrix::det1(vector<double> Ddiagonal)
+{
+	if (Ddiagonal.size() == 1)
+		return Ddiagonal[0];
+
+	double sum = 0;
+	int j = 0;
+
+	for (int i = 0; i < (int)Ddiagonal.size(); i++) {
+		if(i == j)
+			sum += pow((double)(-1), (double)(i + j + 1)) * Ddiagonal[i] * det2(minor1(i, j, Ddiagonal));
+
+		else
+			sum += pow((double)(-1), (double)(i + j + 1)) * (double) 1 * det2(minor1(i, j, Ddiagonal));
+
+	}
+
+	return sum;
+
+}
+
+double MyMatrix::det2(vector<vector<double> > m)
+{
+	if (m.size() == 1)
+		return m[0][0];
+
+	double sum = 0;
+	int j = 0;
+
+	for (int i = 0; i < (int)m.size(); i++) {
+		sum += pow((double)(-1), (double)(i + j + 1)) * m[i][j] * det2(minor2(i, j, m));
+
+	}
+
+	return sum;
+
+}
+
+vector<vector<double> > MyMatrix::cofactor(vector<double> Ddiagonal)
+{
+
+	vector<vector<double> > result;
+	vector<double> row;
+
+	double value;
+
+	for (int i = 0; i < (int)Ddiagonal.size(); i++) {
+		row.clear();
+		for (int j = 0; j < (int)Ddiagonal.size(); j++) {
+			value = pow((double)(-1), (double)(i + 1 + j)) * det2(minor1(i, j, Ddiagonal));
+			row.push_back(value);
+		}
+		result.push_back(row);
+	}
+
+	return result;
+
+}
+
+vector<vector<double> > MyMatrix::transpose(vector<vector<double> > m)
+{
+
+	vector<vector<double> > result;
+	result = m;
+
+	for (int i = 0; i < (int)result.size(); i++) {
+		for (int j = 0; j < (int)result.size(); j++) {
+			result[j][i] = m[i][j];
+		}
+	}
+
+	return result;
+
+}
+
+vector<vector<double> > MyMatrix::adjugate(vector<double> Ddiagonal)
+{
+
+	vector<vector<double> > result;
+
+	result = cofactor(Ddiagonal);
+	result = transpose(result);
+
+	return result;
+}
+
+vector<vector<double> > MyMatrix::inverse(vector<double> Ddiagonal)
+{
+
+	vector<vector<double> > result;
+	double det_m = det1(Ddiagonal);
+	result = adjugate(Ddiagonal);
+
+	result = result / det_m;
+
+	return result;
+
 }
