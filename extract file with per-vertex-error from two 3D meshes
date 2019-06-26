@@ -1,0 +1,193 @@
+#pragma warning(disable : 4996)
+
+#include <iostream>
+#include <fstream>
+#include <cstring>
+#include <string>
+#include <stdlib.h>
+#include <stdio.h>
+#include <Eigen/Dense>
+#include <vector>
+#include <MathGeoLib.h>
+
+using namespace std;
+using namespace Eigen;
+
+
+//samba
+#define N 9971
+#define f 1 //change to 175 for all frames 
+
+float square(float a);
+
+
+int main(int argc, char* argv[])
+{
+	string line;
+	Matrix<float, Dynamic, Dynamic> VertsX1;
+	Matrix<float, Dynamic, Dynamic> VertsY1;
+	Matrix<float, Dynamic, Dynamic> VertsZ1;
+	VertsX1.resize(f, N);
+	VertsY1.resize(f, N);
+	VertsZ1.resize(f, N);
+	Matrix<float, Dynamic, Dynamic> VertsX2;
+	Matrix<float, Dynamic, Dynamic> VertsY2;
+	Matrix<float, Dynamic, Dynamic> VertsZ2;
+	VertsX2.resize(f, N);
+	VertsY2.resize(f, N);
+	VertsZ2.resize(f, N);
+
+
+	for (int j = 0; j < f; j++)
+	{
+		//std::string objDir = "C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\meshes\\";
+		std::string objFile1 = "C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\meshes\\mesh_0000.obj";
+		std::string objFile2 = "C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\40-1000-4000O.obj";
+		//string buf = "";
+		//char str[20];
+		//buf += itoa(j, str, 10);
+
+		//if (j < 10)
+		//{
+		//	string buf = "";
+		//	char str[20];
+		//	buf += itoa(j, str, 10);
+		//	objFile = objDir + "mesh_000" + buf + ".obj";
+		//}
+		//if (j > 9 && j < 100)
+		//{
+		//	string buf = "";
+		//	char str[20];
+		//	buf += itoa(j, str, 10);
+		//	objFile = objDir + "mesh_00" + buf + ".obj";
+		//}
+		//if (j > 99 && j < 1000)
+		//{
+		//	string buf = "";
+		//	char str[20];
+		//	buf += itoa(j, str, 10);
+		//	objFile = objDir + "mesh_0" + buf + ".obj";
+		//}
+
+		//uncomment above for many meshes
+		//std::string objFile = "C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\40-1000-4000important.obj";
+
+		ifstream myfile1(objFile1);
+		if (myfile1)  // same as: if (myfile.good())
+		{
+			for (int i = 0; i < N; i++)
+			{
+				(getline(myfile1, line));  // same as: while (getline( myfile, line ).good())
+				float v1, v2, v3;
+				string s1, s2, s3;
+				int flag = 0;
+
+				for (int it = 2; it < line.size(); ++it)
+				{
+					if (line[it] == ' ')
+					{
+						flag++;
+						continue;
+					}
+
+					if (flag == 0)
+						s1 += line[it];
+					if (flag == 1)
+						s2 += line[it];
+					if (flag == 2)
+						s3 += line[it];
+				}
+
+				v1 = stof(s1);
+				v2 = stof(s2);
+				v3 = stof(s3);
+
+				VertsX1(j, i) = v1;
+				VertsY1(j, i) = v2;
+				VertsZ1(j, i) = v3;
+			}
+			myfile1.close();
+		}
+		else
+		{
+			std::cout << "fooey\n";
+		}
+
+
+
+		ifstream myfile2(objFile2);
+		if (myfile2)  // same as: if (myfile.good())
+		{
+			for (int i = 0; i < N; i++)
+			{
+				(getline(myfile2, line));  // same as: while (getline( myfile, line ).good())
+				float v1, v2, v3;
+				string s1, s2, s3;
+				int flag = 0;
+
+				for (int it = 2; it < line.size(); ++it)
+				{
+					if (line[it] == ' ')
+					{
+						flag++;
+						continue;
+					}
+
+					if (flag == 0)
+						s1 += line[it];
+					if (flag == 1)
+						s2 += line[it];
+					if (flag == 2)
+						s3 += line[it];
+				}
+
+				v1 = stof(s1);
+				v2 = stof(s2);
+				v3 = stof(s3);
+
+				VertsX2(j, i) = v1;
+				VertsY2(j, i) = v2;
+				VertsZ2(j, i) = v3;
+			}
+			myfile2.close();
+		}
+		else
+		{
+			std::cout << "fooey\n";
+		}
+
+	}
+	//std::cout << "Done!" << endl;
+
+	ofstream myfile;
+	myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Normals\\Angle Error\\Err40-1000-4000O.txt");
+
+	for (int i = 0; i < f; i++)
+	{
+		for (int j = 0; j < N; j++)
+		{
+			float err = 0;
+			err += square(VertsX1(i, j) - VertsX2(i, j));
+			err += square(VertsY1(i, j) - VertsY2(i, j));
+			err += square(VertsZ1(i, j) - VertsZ2(i, j));
+
+			//cout << VertsX1(i, j) << " " << VertsX2(i, j) << " " << err << endl;
+			if(err * 10000000 < 0.0001)
+				myfile << 0 << endl;
+			else
+				myfile << err * 10000000 << endl; //10^7
+		}
+	}
+	myfile.close();
+
+
+	std::cout << "Done!" << endl;
+
+	//cin.get();
+	return 0;
+}
+
+float square(float a)
+{
+	return a * a;
+}
