@@ -1,0 +1,699 @@
+#include <iostream>
+#include <fstream>
+#include <cstring>
+#include <string>
+#include <stdlib.h>
+#include <stdio.h>
+#include <Eigen/Dense>
+#include <vector>
+#include <MathGeoLib.h>
+#include <cmath>
+
+using namespace std;
+using namespace Eigen;
+
+
+#define N 9971
+#define M 19938
+#define f 40 //change to 175 for all frames 
+
+
+void StoreNeighbourVerts(Matrix<int, Dynamic, Dynamic> Tr, int P_index, vector<int> &NeighbourVerts, vector<int> &NeighbourRingIndex, vector<int> &ActiveNeighbourVerts, 
+						 vector<int> &ActiveNeighbourRingIndex, vector<int> ActiveVerts, int CurrentFrame, vector<int> &flag);
+void DeleteDoubles(vector<int> &NeighbourVerts, vector<int> &NeighbourRingIndex);
+float Ca(vector<int> ActiveNeighbourRingIndex, vector<int> NeighbourRingIndex, int maxRing);
+float Cb(vector<float> oldCa, vector<float> newCa, int ActiveSize, vector<int> ActiveNeighbourVerts);
+void quickSort(vector<float> &arr, vector<int> &indices, int left, int right);
+void decimate(vector<int> &ActiveVerts, int &ActiveSize, vector<float> &Costs, vector<int> &CostInds, Matrix<int, Dynamic, Dynamic> Tr, 
+	Matrix<float, Dynamic, Dynamic> D, vector<int> &NeighbourVerts, vector<int> &ActiveNeighbourVerts, vector<int> &ActiveNeighbourRingIndex, 
+	vector<int> &NeighbourRingIndex, int CurrentFrame, vector<float> &CaArrayNew, vector<float> &CaArrayOld);
+float square(float a);
+double KG(Matrix<float, Dynamic, Dynamic> D, Matrix<float, Dynamic, Dynamic> Dnew);
+float partialNMSVE(Matrix<float, Dynamic, Dynamic> D, Matrix<float, Dynamic, Dynamic> Dnew, int ind, std::vector<int> ActiveNeighbourVerts);
+float NMSE(Matrix<float, Dynamic, Dynamic> D, Matrix<float, Dynamic, Dynamic> Dnew);
+
+vector<int> flag = { 0 };
+ofstream importantitems;
+vector<int> checkdouble;
+
+int main(int argc, char* argv[])
+{
+	string line;
+	Matrix<float, Dynamic, Dynamic> D;
+	Matrix<float, Dynamic, Dynamic> Dreceived;
+	Matrix<int, Dynamic, Dynamic> Tr;
+
+	std::vector<int> ActiveVerts; // 1 if active, 0 if inactive
+	std::vector<float> CaArrayOld;
+	std::vector<float> CaArrayNew;
+	std::vector<float> Costs;
+	std::vector<int> CostInds;
+	std::vector<int> NeighbourVerts;
+	std::vector<int> NeighbourRingIndex;
+	std::vector<int> ActiveNeighbourVerts;
+	std::vector<int> ActiveNeighbourRingIndex;
+
+
+	D.resize(3 * f, N);  //all verts
+	Tr.resize(3, M); //all triangles
+	Dreceived.resize(3 * f, N);  //received verts
+	int ActiveSize = N;
+
+	float NMSe = 0;
+	float NMSVe = 0;
+	double KGe = 0;
+
+	//Load from files
+	{
+		ifstream myfileX("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data\\VertsX.txt");
+		if (myfileX)
+		{
+			for (int i = 0; i < f; i++)
+			{
+				for (int j = 0; j < N; j++)
+				{
+					(getline(myfileX, line));
+					float v;
+					string s;
+
+					v = stof(line);
+
+					D(3 * i, j) = v;
+				}
+			}
+			myfileX.close();
+		}
+		else std::cout << "fooey\n";
+
+		ifstream myfileY("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data\\VertsY.txt");
+		if (myfileY)
+		{
+			for (int i = 0; i < f; i++)
+			{
+				for (int j = 0; j < N; j++)
+				{
+					(getline(myfileY, line));
+					float v;
+					string s;
+
+					v = stof(line);
+
+					D(3 * i + 1, j) = v;
+				}
+			}
+			myfileY.close();
+		}
+		else std::cout << "fooey\n";
+
+		ifstream myfileZ("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data\\VertsZ.txt");
+		if (myfileZ)
+		{
+			for (int i = 0; i < f; i++)
+			{
+				for (int j = 0; j < N; j++)
+				{
+					(getline(myfileZ, line));
+					float v;
+					string s;
+
+					v = stof(line);
+
+					D(3 * i + 2, j) = v;
+				}
+			}
+			myfileZ.close();
+		}
+		else std::cout << "fooey\n";
+
+		ifstream myfile1("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data\\Tris1.txt");
+		if (myfile1)
+		{
+			for (int j = 0; j < M; j++)
+			{
+				(getline(myfile1, line));
+				int v;
+				string s;
+
+				v = stoi(line);
+
+				Tr(0, j) = v - 1; //in the file indexing starts from 1 instead of 0
+			}
+			myfile1.close();
+		}
+		else std::cout << "fooey\n";
+
+		ifstream myfile2("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data\\Tris2.txt");
+		if (myfile2)
+		{
+			for (int j = 0; j < M; j++)
+			{
+				(getline(myfile2, line));
+				int v;
+				string s;
+
+				v = stoi(line);
+
+				Tr(1, j) = v - 1; //in the file indexing starts from 1 instead of 0
+			}
+			myfile2.close();
+		}
+		else std::cout << "fooey\n";
+
+		ifstream myfile3("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data\\Tris3.txt");
+		if (myfile3)
+		{
+			for (int j = 0; j < M; j++)
+			{
+				(getline(myfile3, line));
+				int v;
+				string s;
+
+				v = stoi(line);
+
+				Tr(2, j) = v - 1; //in the file indexing starts from 1 instead of 0
+			}
+			myfile3.close();
+		}
+		else std::cout << "fooey\n";
+	}
+
+
+
+	int CurrentFrame = 0;
+
+	{
+		//ENCODER PART
+
+		//create active vertex array for the first frame
+		for (int i = 0; i < N; i++)
+		{
+			ActiveVerts.push_back(1);
+			CaArrayOld.push_back(0);
+			CaArrayNew.push_back(0);
+			Costs.push_back(0);
+			CostInds.push_back(i);
+		}
+
+		//first decimation (vert chosen randomly for decimation)
+		ActiveVerts[0] = 0;
+		ActiveSize--;
+
+		for (int i = 0; i < N; i++)
+		{
+			if (ActiveVerts[i])
+			{
+				flag[0] = 0;
+				StoreNeighbourVerts(Tr, i, NeighbourVerts, NeighbourRingIndex, ActiveNeighbourVerts, ActiveNeighbourRingIndex, ActiveVerts, CurrentFrame, flag);
+
+				if (ActiveNeighbourVerts.size() != NeighbourVerts.size())
+				{
+					CaArrayOld[i] = CaArrayNew[i];
+					CaArrayNew[i] = Ca(ActiveNeighbourRingIndex, NeighbourRingIndex, flag[0]);
+					Costs[i] = CaArrayNew[i] + 0.8 * Cb(CaArrayOld, CaArrayNew, ActiveSize, ActiveNeighbourVerts);
+				}
+				ActiveNeighbourRingIndex.clear();
+				ActiveNeighbourVerts.clear();
+				NeighbourVerts.clear();
+				NeighbourRingIndex.clear();
+			}
+		}
+
+
+		quickSort(Costs, CostInds, 0, N - 1);
+
+
+		ofstream fileKG, fileNMSVE, fileNMSE;
+		//fileKG.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\graphs\\3Decimations\\Swing\\KG1.txt");
+		//fileNMSVE.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\graphs\\3Decimations\\Swing\\NMSVE1.txt");
+		//fileNMSE.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\graphs\\3Decimations\\Swing\\NMSE1.txt");
+		importantitems.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data new\\ImportantVerts1(0).txt");
+
+
+
+		//for (int reps = 0; reps < 10; reps++)
+		do
+		{
+			//decimate until half verts have been decimated for testing purposes
+			for (int i = 0; i < 100; i++)
+			{
+				decimate(ActiveVerts, ActiveSize, Costs, CostInds, Tr, D, NeighbourVerts, ActiveNeighbourVerts, ActiveNeighbourRingIndex,
+					NeighbourRingIndex, CurrentFrame, CaArrayNew, CaArrayOld);
+			}
+
+			for (int i = 0; i < checkdouble.size(); i++)
+			{
+				for (int j = 0; j < checkdouble.size(); j++)
+				{
+					if (i != j && checkdouble[i] == checkdouble[j])
+					{
+						checkdouble.erase(checkdouble.begin() + j);
+
+						j = i; //on the next iteration j = i + 1 so that it rechecks list
+					}
+					if (i >= checkdouble.size() || j >= checkdouble.size()) break;
+				}
+				if (i >= checkdouble.size()) break;
+			}
+
+			//create the matrix that will be sent
+			//for (int i = 0; i < N; i++)
+			//{
+			//	if (ActiveVerts[i])
+			//	{
+			//		Dreceived(3 * CurrentFrame + 0, i) = D(3 * CurrentFrame + 0, i);
+			//		Dreceived(3 * CurrentFrame + 1, i) = D(3 * CurrentFrame + 1, i);
+			//		Dreceived(3 * CurrentFrame + 2, i) = D(3 * CurrentFrame + 2, i);
+			//	}
+			//}
+
+
+			//DECODER PART
+
+			//reconstruction
+			//for (int i = 0; i < N; i++)
+			//{
+			//	if (!ActiveVerts[i])
+			//	{
+			//		flag[0] = 0;
+			//		StoreNeighbourVerts(Tr, i, NeighbourVerts, NeighbourRingIndex, ActiveNeighbourVerts, ActiveNeighbourRingIndex, ActiveVerts, CurrentFrame, flag);
+
+			//		//std::cout << ActiveNeighbourVerts.size() << endl;
+			//		vec Mean(0, 0, 0);
+			//		for (int j = 0; j < ActiveNeighbourVerts.size(); j++)
+			//		{
+			//			vec point(Dreceived(3 * CurrentFrame + 0, ActiveNeighbourVerts[j]),
+			//				Dreceived(3 * CurrentFrame + 1, ActiveNeighbourVerts[j]),
+			//				Dreceived(3 * CurrentFrame + 2, ActiveNeighbourVerts[j]));
+			//			Mean += point;
+
+			//		}
+			//		Mean /= ActiveNeighbourVerts.size();
+
+			//		NMSVe += partialNMSVE(D, Dreceived, i, ActiveNeighbourVerts);
+
+			//		ActiveNeighbourRingIndex.clear();
+			//		ActiveNeighbourVerts.clear();
+			//		NeighbourVerts.clear();
+			//		NeighbourRingIndex.clear();
+
+			//		Dreceived(3 * CurrentFrame + 0, i) = Mean.x;
+			//		Dreceived(3 * CurrentFrame + 1, i) = Mean.y;
+			//		Dreceived(3 * CurrentFrame + 2, i) = Mean.z;
+			//	}
+			//	else
+			//	{
+			//		StoreNeighbourVerts(Tr, i, NeighbourVerts, NeighbourRingIndex, ActiveNeighbourVerts, ActiveNeighbourRingIndex, ActiveVerts, CurrentFrame, flag);
+
+			//		NMSVe += partialNMSVE(D, Dreceived, i, ActiveNeighbourVerts);
+
+			//		ActiveNeighbourRingIndex.clear();
+			//		ActiveNeighbourVerts.clear();
+			//		NeighbourVerts.clear();
+			//		NeighbourRingIndex.clear();
+			//	}
+
+			//}
+
+			//KGe = KG(D, Dreceived);
+			//NMSe = NMSE(D, Dreceived);
+			//fileKG << KGe << endl;
+			//fileNMSVE << (NMSVe/(2*N)) << endl;
+			//fileKG << NMSe << endl;
+		} while (checkdouble.size() < 5000);
+
+		for(int i = 0; i < checkdouble.size(); i++)
+			importantitems << checkdouble[i] << endl;
+
+		//fileKG.close();
+		//fileNMSVE.close();
+		//fileNMSE.close();
+		importantitems.close();
+	}
+
+
+
+	//Write new Data to files
+	{
+		ofstream myfile;
+		myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data new\\temp\\VX.txt");
+		for (int i = 0; i < 1; i++)
+			for (int j = 0; j < N; j++)
+				myfile << Dreceived(3 * i + 0, j) << endl;
+		myfile.close();
+
+		myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data new\\temp\\VY.txt");
+		for (int i = 0; i < 1; i++)
+			for (int j = 0; j < N; j++)
+				myfile << Dreceived(3 * i + 1, j) << endl;
+		myfile.close();
+
+		myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data new\\temp\\VZ.txt");
+		for (int i = 0; i < 1; i++)
+			for (int j = 0; j < N; j++)
+				myfile << Dreceived(3 * i + 2, j) << endl;
+		myfile.close();
+	}
+
+}
+
+
+//takes as input the index to a point and stores the indices to its neighbors
+void StoreNeighbourVerts(Matrix<int, Dynamic, Dynamic> Tr, int P_index, vector<int> &NeighbourVerts, vector<int> &NeighbourRingIndex, 
+	vector<int> &ActiveNeighbourVerts, vector<int> &ActiveNeighbourRingIndex, std::vector<int> ActiveVerts, int CurrentFrame, vector<int> &flag)
+{
+	flag[0]++;
+
+	//go through all verts and add the 1-ring neighbours to a list and also add the ring distance of every neighbour to another list
+	for (int i = 0; i < M; i++)
+	{
+		if (Tr(0, i) == P_index)
+		{
+			NeighbourVerts.push_back(Tr(1, i));
+			NeighbourVerts.push_back(Tr(2, i));
+
+			//contains the ring distance of each neighbour
+			NeighbourRingIndex.push_back(flag[0]);
+			NeighbourRingIndex.push_back(flag[0]);
+		}
+
+		if (Tr(1, i) == P_index)
+		{
+			NeighbourVerts.push_back(Tr(0, i));
+			NeighbourVerts.push_back(Tr(2, i));
+
+			//contains the ring distance of each neighbour
+			NeighbourRingIndex.push_back(flag[0]);
+			NeighbourRingIndex.push_back(flag[0]);
+		}
+
+		if (Tr(2, i) == P_index)
+		{
+			NeighbourVerts.push_back(Tr(0, i));
+			NeighbourVerts.push_back(Tr(1, i));
+
+			//contains the ring distance of each neighbour
+			NeighbourRingIndex.push_back(flag[0]);
+			NeighbourRingIndex.push_back(flag[0]);
+		}
+	}
+
+
+	DeleteDoubles(NeighbourVerts, NeighbourRingIndex);
+
+	//pass on active 
+	for (int i = 0; i < NeighbourVerts.size(); i++)
+	{
+		if (ActiveVerts[NeighbourVerts[i]])
+		{
+			ActiveNeighbourVerts.push_back(NeighbourVerts[i]);
+			ActiveNeighbourRingIndex.push_back(NeighbourRingIndex[i]);
+		}
+	}
+
+	DeleteDoubles(ActiveNeighbourVerts, ActiveNeighbourRingIndex);
+
+	//go up to 3-ring neighbours
+	if (ActiveNeighbourVerts.size() < 3 && flag[0] < 3)
+	{
+		flag[0]++;
+		for (int i = 0; i < NeighbourVerts.size(); i++)
+		{
+			if (NeighbourRingIndex[i] == flag[0] - 1)
+			{
+				flag[0]--;
+				StoreNeighbourVerts(Tr, NeighbourVerts[i], NeighbourVerts, NeighbourRingIndex, ActiveNeighbourVerts, ActiveNeighbourRingIndex, ActiveVerts, CurrentFrame, flag);
+			}
+		}
+	}
+
+	//delete P from Neighbours
+	for (int i = 0; i < ActiveNeighbourVerts.size(); i++)
+	{
+		if (ActiveNeighbourVerts[i] == P_index)
+		{
+			ActiveNeighbourVerts.erase(ActiveNeighbourVerts.begin() + i);
+			ActiveNeighbourRingIndex.erase(ActiveNeighbourRingIndex.begin() + i);
+		}
+
+		if (i >= ActiveNeighbourVerts.size())
+			break;
+	}
+}
+
+void DeleteDoubles(std::vector<int> &NeighbourVerts, vector<int> &NeighbourRingIndex)
+{
+	for (int i = 0; i < NeighbourVerts.size(); i++)
+	{
+		for (int j = 0; j < NeighbourVerts.size(); j++)
+		{
+			if (i != j && NeighbourVerts[i] == NeighbourVerts[j])
+			{
+				NeighbourVerts.erase(NeighbourVerts.begin() + j);
+				NeighbourRingIndex.erase(NeighbourRingIndex.begin() + j);
+
+				j = i; //on the next iteration j = i + 1 so that it rechecks list
+			}
+			if (i >= NeighbourVerts.size() || j >= NeighbourVerts.size()) break;
+		}
+		if (i >= NeighbourVerts.size()) break;
+	}
+}
+
+float Ca(vector<int> ActiveNeighbourRingIndex, vector<int> NeighbourRingIndex, int maxRing)
+{
+	float Cost = 0;
+
+	for (int i = 0; i < maxRing; i++)
+	{
+		int Actives = 0;
+		int RingNeigbours = 0;
+
+		for (int j = 0; j < NeighbourRingIndex.size(); j++)
+			if (NeighbourRingIndex[j] == i + 1)
+				RingNeigbours++;
+
+		for (int j = 0; j < ActiveNeighbourRingIndex.size(); j++)
+			if (ActiveNeighbourRingIndex[j] == i + 1)
+				Actives++;
+
+		if (RingNeigbours)
+			Cost += ((RingNeigbours - 1.0 * Actives) / RingNeigbours) * pow(0.6, i + 1);
+	}
+
+	return Cost;
+}
+
+float Cb(vector<float> oldCa, vector<float> newCa, int ActiveSize, vector<int> ActiveNeighbourVerts)
+{
+	float Cost = 0;
+
+
+	for (int i = 0; i < ActiveNeighbourVerts.size(); i++)
+	{
+		Cost += (oldCa[ActiveNeighbourVerts[i]] - newCa[ActiveNeighbourVerts[i]]) / (ActiveSize + 1);
+	}
+	return Cost;
+}
+
+void decimate(std::vector<int> &ActiveVerts, int &ActiveSize, std::vector<float> &Costs, std::vector<int> &CostInds, 
+	Matrix<int, Dynamic, Dynamic> Tr, Matrix<float, Dynamic, Dynamic> D, std::vector<int> &NeighbourVerts, 
+	std::vector<int> &ActiveNeighbourVerts, vector<int> &ActiveNeighbourRingIndex, std::vector<int> &NeighbourRingIndex, 
+	int CurrentFrame, std::vector<float> &CaArrayNew, std::vector<float> &CaArrayOld)
+{
+	for (int i = 0; i < 5; i++)
+	{
+		bool cond;
+		int index = -1;
+		do
+		{
+			index++;
+			cond = false;
+
+			if (!ActiveVerts[CostInds[index]])
+				cond = true;
+
+		} while (cond);
+
+		//importantitems << CostInds[N - 1 - index] << endl;
+		checkdouble.push_back(CostInds[N - 1 - index]);
+
+		ActiveVerts[CostInds[index]] = 0; //decimate the verts with the smallest cost
+		ActiveSize--;
+	}
+
+
+	for (int i = 0; i < N; i++)
+	{
+		if (ActiveVerts[i])
+		{
+			flag[0] = 0;
+			StoreNeighbourVerts(Tr, i, NeighbourVerts, NeighbourRingIndex, ActiveNeighbourVerts, ActiveNeighbourRingIndex, ActiveVerts, CurrentFrame, flag);
+			if (ActiveNeighbourVerts.size() != NeighbourVerts.size())
+			{
+				CaArrayOld[i] = CaArrayNew[i];
+				CaArrayNew[i] = Ca(ActiveNeighbourRingIndex, NeighbourRingIndex, flag[0]);
+				Costs[i] = CaArrayNew[i] + 0.8 * Cb(CaArrayOld, CaArrayNew, ActiveSize, ActiveNeighbourVerts);
+			}
+			else
+				Costs[i] = CaArrayNew[i] + 0.8 * Cb(CaArrayOld, CaArrayNew, ActiveSize, ActiveNeighbourVerts);
+
+			ActiveNeighbourRingIndex.clear();
+			ActiveNeighbourVerts.clear();
+			NeighbourVerts.clear();
+			NeighbourRingIndex.clear();
+		}
+	}
+
+	quickSort(Costs, CostInds, 0, N - 1);
+}
+
+void quickSort(std::vector<float> &arr, std::vector<int> &indices, int left, int right)
+{
+	int i = left, j = right;
+	float tmp1;
+	int tmp2;
+	float pivot = arr[(left + right) / 2];
+
+
+
+	/* partition */
+
+	while (i <= j)
+	{
+		while (arr[i] < pivot)	i++;
+
+		while (arr[j] > pivot)	j--;
+
+
+		if (i <= j)
+		{
+			tmp1 = arr[i];
+			arr[i] = arr[j];
+			arr[j] = tmp1;
+
+
+			tmp2 = indices[i];
+			indices[i] = indices[j];
+			indices[j] = tmp2;
+
+			i++;
+			j--;
+		}
+	};
+
+
+
+	/* recursion */
+
+	if (left < j)
+		quickSort(arr, indices, left, j);
+
+	if (i < right)
+		quickSort(arr, indices, i, right);
+
+}
+
+//square function
+float square(float a)
+{
+	return a * a;
+}
+
+double KG(Matrix<float, Dynamic, Dynamic> D, Matrix<float, Dynamic, Dynamic> Dnew)
+{
+	Matrix<double, Dynamic, Dynamic> means(f, 3);
+
+	for (int i = 0; i < 3; i++)
+		for (int j = 0; j < f; j++)
+			means(j, i) = 0;
+
+	for (int i = 0; i < N; i++)
+	{
+		for (int j = 0; j < f; j++)
+		{
+			means(j, 0) += D(3 * j + 0, i);
+			means(j, 1) += D(3 * j + 1, i);
+			means(j, 2) += D(3 * j + 2, i);
+		}
+	}
+
+	for (int i = 0; i < f; i++)
+	{
+		means(i, 0) /= N;
+		means(i, 1) /= N;
+		means(i, 2) /= N;
+	}
+
+	double s1 = 0, s2 = 0;
+
+	for (int i = 0; i < f; i++)
+	{
+		for (int j = 0; j < N; j++)
+		{
+			s1 += square(D(3 * i + 0, j) - Dnew(3 * i + 0, j));
+			s1 += square(D(3 * i + 1, j) - Dnew(3 * i + 1, j));
+			s1 += square(D(3 * i + 2, j) - Dnew(3 * i + 2, j));
+
+			s2 += square(D(3 * i + 0, j) - means(i, 0));
+			s2 += square(D(3 * i + 1, j) - means(i, 1));
+			s2 += square(D(3 * i + 2, j) - means(i, 2));
+		}
+	}
+
+	return ((1 - (sqrt(s1) / sqrt(s2))) * 100);
+}
+
+float partialNMSVE(Matrix<float, Dynamic, Dynamic> D, Matrix<float, Dynamic, Dynamic> Dnew, int ind, std::vector<int> ActiveNeighbourVerts)
+{
+	float error = 0;
+	vec v1(D(0, ind), D(1, ind), D(2, ind));
+	vec v2(Dnew(0, ind), Dnew(1, ind), Dnew(2, ind));
+
+	vec temp1(0, 0, 0);
+	vec temp2(0, 0, 0);
+	float Den1 = 0, Den2 = 0;
+
+	error += (v1 - v2).Length();
+
+	for (int i = 0; i < ActiveNeighbourVerts.size(); i++)
+	{
+		vec N1(D(0, ActiveNeighbourVerts[i]), D(1, ActiveNeighbourVerts[i]), D(2, ActiveNeighbourVerts[i]));
+		vec N2(Dnew(0, ActiveNeighbourVerts[i]), Dnew(1, ActiveNeighbourVerts[i]), Dnew(2, ActiveNeighbourVerts[i]));
+
+		temp1 += -N1 / (v1 - N1).Length(); 
+		temp2 +=  N2 / (v2 - N2).Length();
+		Den1 += 1 / (v1 - N1).Length();
+		Den2 += 1 / (v2 - N2).Length();
+	}
+
+	error += ((v1 - temp1 / Den1) - (v2 - temp2 / Den2)).Length();
+	if (_isnanf(error)) return 0;
+	return error;
+}
+
+float NMSE(Matrix<float, Dynamic, Dynamic> D, Matrix<float, Dynamic, Dynamic> Dnew)
+{
+	float err = 0, temp1 = 0, temp2 = 0;
+
+	for (int i = 0; i < 3 * f; i++)
+	{
+		for (int j = 0; j < N; j++)
+		{
+			err += square(Dnew(i, j) - D(i, j));
+		}
+	}
+	err /= (N * 3 * f);
+
+	for (int i = 0; i < 3 * f; i++)
+	{
+		for (int j = 0; j < N; j++)
+		{
+			temp1 += square(D(i, j));
+			temp2 += square(Dnew(i, j));
+		}
+	}
+	temp1 /= (N * 3 * f);
+	temp2 /= (N * 3 * f);
+
+	return ((1 - err / (temp1 * temp2)) * 100);
+}
