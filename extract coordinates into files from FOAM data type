@@ -1,0 +1,163 @@
+#pragma warning(disable : 4996)
+
+#include <iostream>
+#include <fstream>
+#include <cstring>
+#include <string>
+#include <stdlib.h>
+#include <stdio.h>
+#include <Eigen/Dense>
+#include <vector>
+#include <MathGeoLib.h>
+
+using namespace std;
+using namespace Eigen;
+
+
+//samba
+#define N 54000
+#define f 1 //change to 175 for all frames 
+
+
+int main(int argc, char* argv[])
+{
+	string line;
+	Matrix<float, Dynamic, Dynamic> VertsX;
+	Matrix<float, Dynamic, Dynamic> VertsY;
+	Matrix<float, Dynamic, Dynamic> VertsZ;
+	VertsX.resize(f, N);
+	VertsY.resize(f, N);
+	VertsZ.resize(f, N);
+
+	//0.01_positions
+	for (int j = 1; j < f + 1; j++)
+	{
+		std::string objDir = "C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\lungs\\Particles_Positions\\";
+		std::string objFile;
+		string buf = "";
+		char str[20];
+		buf += itoa(j, str, 10);
+
+		if (j < 10)
+		{
+			string buf = "";
+			char str[20];
+			buf += itoa(j, str, 10);
+			objFile = objDir + "0.0" + buf + "_positions.txt";
+		}
+		if (j > 9 && j < 100)
+		{
+			string buf = "";
+			char str[20];
+			buf += itoa(j, str, 10);
+			objFile = objDir + "0." + buf + "_positions.txt";
+		}
+		if (j > 99 && j < 1000)
+		{
+			string buf = "";
+			char str[20];
+			buf += itoa(j, str, 10);
+			objFile = objDir + buf + "_positions.txt";
+		}
+
+		ifstream myfile(objFile);
+
+		if (myfile)  // same as: if (myfile.good())
+		{
+			for (int i = 0; i < N + 19; i++)
+			{
+				(getline(myfile, line));  // same as: while (getline( myfile, line ).good())
+				if (i < 19) continue;
+
+				float v1, v2, v3;
+				string s1, s2, s3;
+				int flag = 0;
+
+				for (int it = 2; it < line.size(); ++it)
+				{
+					if (line[it] == ' ')
+					{
+						flag++;
+						continue;
+					}
+
+					if (flag == 0)
+						s1 += line[it];
+					if (flag == 1)
+						s2 += line[it];
+					if (flag == 2)
+						s3 += line[it];
+				}
+
+				v1 = stof(s1);
+				v2 = stof(s2);
+				v3 = stof(s3);
+
+				VertsX(j-1, i-19) = v1;
+				VertsY(j-1, i-19) = v2;
+				VertsZ(j-1, i-19) = v3;
+			}
+
+		}
+		else
+		{
+			std::cout << "fooey\n";
+			std::cout << j << endl;
+		}
+	}
+	//std::cout << "Done!" << endl;
+
+	ofstream myfile;
+	//myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\lungs\\Numbers\\VertsX.txt");
+	//for (int i = 0; i < f; i++)
+	//{
+	//	for (int j = 0; j < N; j++)
+	//	{
+	//		myfile << VertsX(i, j) << endl;
+	//	}
+	//}
+	//myfile.close();
+
+	//myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\lungs\\Numbers\\VertsY.txt");
+	//for (int i = 0; i < f; i++)
+	//{
+	//	for (int j = 0; j < N; j++)
+	//	{
+	//		myfile << VertsY(i, j) << endl;
+	//	}
+	//}
+	//myfile.close();
+
+	//myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\lungs\\Numbers\\VertsZ.txt");
+	//for (int i = 0; i < f; i++)
+	//{
+	//	for (int j = 0; j < N; j++)
+	//	{
+	//		myfile << VertsZ(i, j) << endl;
+	//	}
+	//}
+	//myfile.close();
+
+	myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\lungs\\Numbers\\VertsXYZ1.txt");
+	for (int i = 0; i < f; i++)
+	{
+		for (int j = 0; j < N; j++)
+		{
+			myfile << VertsX(i, j);
+			myfile << " ";
+			myfile << VertsY(i, j);
+			myfile << " ";
+			myfile << VertsZ(i, j);
+			myfile << endl;
+		
+			//c+VertsY(i, j) + " " + VertsZ(i, j) << endl;
+		}
+	}
+	myfile.close();
+
+	std::cout << "Done!" << endl;
+
+	//cin.get();
+	return 0;
+}
+
