@@ -1,0 +1,217 @@
+#pragma warning(disable : 4996)
+
+#include <iostream>
+#include <fstream>
+#include <cstring>
+#include <string>
+#include <stdlib.h>
+#include <stdio.h>
+#include <Eigen/Dense>
+#include <vector>
+#include <MathGeoLib.h>
+
+using namespace std;
+using namespace Eigen;
+
+
+//samba
+#define N 9971
+#define M 19938
+#define f 40 //change to 175 for all frames 
+
+
+int main(int argc, char* argv[])
+{
+	string line;
+	Matrix<float, Dynamic, Dynamic> VertsX;
+	Matrix<float, Dynamic, Dynamic> VertsY;
+	Matrix<float, Dynamic, Dynamic> VertsZ;
+	VertsX.resize(f, N);
+	VertsY.resize(f, N);
+	VertsZ.resize(f, N);
+
+	Matrix<int, Dynamic, Dynamic> Tris1;
+	Matrix<int, Dynamic, Dynamic> Tris2;
+	Matrix<int, Dynamic, Dynamic> Tris3;
+	Tris1.resize(f, M);
+	Tris2.resize(f, M);
+	Tris3.resize(f, M);
+
+	for (int j = 0; j < f; j++)
+	{
+		std::string objDir = "C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\meshes\\";
+		std::string objFile;
+		string buf = "";
+		char str[20];
+		buf += itoa(j, str, 10);
+
+		if (j < 10)
+		{
+			string buf = "";
+			char str[20];
+			buf += itoa(j, str, 10);
+			objFile = objDir + "mesh_000" + buf + ".obj";
+		}
+		if (j>9 && j<100)
+		{
+			string buf = "";
+			char str[20];
+			buf += itoa(j, str, 10);
+			objFile = objDir + "mesh_00" + buf + ".obj";
+		}
+		if (j>99 && j<1000)
+		{
+			string buf = "";
+			char str[20];
+			buf += itoa(j, str, 10);
+			objFile = objDir + "mesh_0" + buf + ".obj";
+		}
+
+		//uncomment above for many meshes
+		//std::string objFile = "C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\40-1000-4000important.obj";
+
+		ifstream myfile(objFile);
+
+		if (myfile)  // same as: if (myfile.good())
+		{
+			for (int i = 0; i < N; i++)
+			{
+				(getline(myfile, line));  // same as: while (getline( myfile, line ).good())
+				float v1, v2, v3;
+				string s1, s2, s3;
+				int flag = 0;
+
+				for (int it = 2; it < line.size(); ++it)
+				{
+					if (line[it] == ' ')
+					{
+						flag++;
+						continue;
+					}
+
+					if (flag == 0)
+						s1 += line[it];
+					if (flag == 1)
+						s2 += line[it];
+					if (flag == 2)
+						s3 += line[it];
+				}
+
+				v1 = stof(s1);
+				v2 = stof(s2);
+				v3 = stof(s3);
+
+				VertsX(j, i) = v1;
+				VertsY(j, i) = v2;
+				VertsZ(j, i) = v3;
+			}
+
+			for (int i = 0; i < M; i++)
+			{
+				(getline(myfile, line));  // same as: while (getline( myfile, line ).good())
+				int v1, v2, v3;
+				string s1, s2, s3;
+				int flag = 0;
+
+				for (int it = 2; it < line.size(); ++it)
+				{
+					if (line[it] == ' ')
+					{
+						flag++;
+						continue;
+					}
+
+					if (flag == 0)
+						s1 += line[it];
+					if (flag == 1)
+						s2 += line[it];
+					if (flag == 2)
+						s3 += line[it];
+				}
+
+				v1 = stoi(s1);
+				v2 = stoi(s2);
+				v3 = stoi(s3);
+
+				Tris1(j, i) = v1;
+				Tris2(j, i) = v2;
+				Tris3(j, i) = v3;
+			}
+			myfile.close();
+		}
+		else
+		{
+			std::cout << "fooey\n";
+			std::cout << j << endl;
+		}
+	}
+	//std::cout << "Done!" << endl;
+
+	ofstream myfile;
+	myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data\\VertsX.txt");
+	for (int i = 0; i < f; i++)
+	{
+		for (int j = 0; j < N; j++)
+		{
+			myfile << VertsX(i, j) << endl;
+		}
+	}
+	myfile.close();
+
+	myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data\\VertsY.txt");
+	for (int i = 0; i < f; i++)
+	{
+		for (int j = 0; j < N; j++)
+		{
+			myfile << VertsY(i, j) << endl;
+		}
+	}
+	myfile.close();
+
+	myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data\\VertsZ.txt");
+	for (int i = 0; i < f; i++)
+	{
+		for (int j = 0; j < N; j++)
+		{
+			myfile << VertsZ(i, j) << endl;
+		}
+	}
+	myfile.close();
+
+	myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data\\Tris3.txt");
+	for (int i = 0; i < 1; i++)
+	{
+		for (int j = 0; j < M; j++)
+		{
+			myfile << Tris3(i, j) << endl;
+		}
+	}
+	myfile.close();
+
+	myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data\\Tris1.txt");
+	for (int i = 0; i < 1; i++)
+	{
+		for (int j = 0; j < M; j++)
+		{
+			myfile << Tris1(i, j) << endl;
+		}
+	}
+	myfile.close();
+
+	myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data\\Tris2.txt");
+	for (int i = 0; i < 1; i++)
+	{
+		for (int j = 0; j < M; j++)
+		{
+			myfile << Tris2(i, j) << endl;
+		}
+	}
+	myfile.close();
+
+
+	std::cout << "Done!" << endl;
+
+	//cin.get();
+	return 0;
+}
+
