@@ -1,0 +1,214 @@
+#pragma warning(disable : 4996)
+
+#include <iostream>
+#include <fstream>
+#include <cstring>
+#include <string>
+#include <stdlib.h>
+#include <stdio.h>
+#include <Eigen/Dense>
+#include <vector>
+#include <MathGeoLib.h>
+
+using namespace std;
+using namespace Eigen;
+
+
+//samba
+#define N 10002
+#define M 20000
+#define f 1 //change to 175 for all frames 
+
+
+int main(int argc, char* argv[])
+{
+	string line;
+	Matrix<float, Dynamic, Dynamic> VertsX;
+	Matrix<float, Dynamic, Dynamic> VertsY;
+	Matrix<float, Dynamic, Dynamic> VertsZ;
+	VertsX.resize(f, N);
+	VertsY.resize(f, N);
+	VertsZ.resize(f, N);
+
+	Matrix<int, Dynamic, Dynamic> Tris1;
+	Matrix<int, Dynamic, Dynamic> Tris2;
+	Matrix<int, Dynamic, Dynamic> Tris3;
+	Tris1.resize(1, M);
+	Tris2.resize(1, M);
+	Tris3.resize(1, M);
+
+
+	ifstream myfile;
+	myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\D_handstand\\Plain Data new\\temp\\VX.txt");
+	//myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data new\\temp\\VX.txt");
+	if (myfile) {
+		for (int i = 0; i < f; i++)
+		{
+			for (int j = 0; j < N; j++)
+			{
+				getline(myfile, line);
+				float v;
+				v = stof(line);
+
+				VertsX(i, j) = v;
+			}
+		}
+	}
+	else std::cout << "fooey\n";
+	myfile.close();
+
+	myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\D_handstand\\Plain Data new\\temp\\VY.txt");
+	//myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data new\\temp\\VY.txt");
+	if (myfile) {
+
+		for (int i = 0; i < f; i++)
+		{
+			for (int j = 0; j < N; j++)
+			{
+				getline(myfile, line);
+				float v;
+				v = stof(line);
+
+				VertsY(i, j) = v;
+
+				if (j == N / 2) cout << 0 << endl;
+			}
+		}
+	}
+	else std::cout << "fooey\n";
+
+	myfile.close();
+
+	myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\D_handstand\\Plain Data new\\temp\\VZ.txt");
+	//myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data new\\temp\\VZ.txt");
+	if (myfile) {
+
+		for (int i = 0; i < f; i++)
+		{
+			for (int j = 0; j < N; j++)
+			{
+				getline(myfile, line);
+				float v;
+				v = stof(line);
+
+				VertsZ(i, j) = v;
+			}
+		}
+	}
+	else std::cout << "fooey\n";
+
+	myfile.close();
+
+	myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\D_handstand\\Plain Data\\Tris1.txt");
+	//myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data\\Tris1.txt");
+	if (myfile) {
+
+		for (int j = 0; j < M; j++)
+		{
+			getline(myfile, line);
+			float v;
+			v = stof(line);
+
+			Tris1(0, j) = v;
+		}
+	}
+	else std::cout << "fooey\n";
+
+	myfile.close();
+
+	myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\D_handstand\\Plain Data\\Tris2.txt");
+	//myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data\\Tris2.txt");
+	if (myfile) {
+
+		for (int j = 0; j < M; j++)
+		{
+			getline(myfile, line);
+			float v;
+			v = stof(line);
+
+			Tris2(0, j) = v;
+		}
+	}
+	else std::cout << "fooey\n";
+
+	myfile.close();
+
+	myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\D_handstand\\Plain Data\\Tris3.txt");
+	//myfile.open("C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data\\Tris3.txt");
+	if (myfile) {
+
+		for (int j = 0; j < M; j++)
+		{
+			getline(myfile, line);
+			float v;
+			v = stof(line);
+
+			Tris3(0, j) = v;
+		}
+	}
+	else std::cout << "fooey\n";
+
+	myfile.close();
+
+
+	for (int j = 0; j < f; j++)
+	{
+		std::string objDir = "C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\D_handstand\\Plain Data new\\meshes\\";
+		//std::string objDir = "C:\\Users\\Δημήτρης\\Desktop\\διπλωματικη\\Data\\Swing\\Plain Data new\\meshes\\";
+
+		std::string objFile;
+		string buf = "";
+		char str[20];
+		buf += itoa(j, str, 10);
+
+		if (j < 10)
+		{
+			string buf = "";
+			char str[20];
+			buf += itoa(j, str, 10);
+			objFile = objDir + "mesh_000" + buf + ".obj";
+		}
+		if (j > 9 && j < 100)
+		{
+			string buf = "";
+			char str[20];
+			buf += itoa(j, str, 10);
+			objFile = objDir + "mesh_00" + buf + ".obj";
+		}
+		if (j > 99 && j < 1000)
+		{
+			string buf = "";
+			char str[20];
+			buf += itoa(j, str, 10);
+			objFile = objDir + "mesh_0" + buf + ".obj";
+		}
+
+		ofstream myfile(objFile);
+		if (myfile)  // same as: if (myfile.good())
+		{
+			for (int i = 0; i < N; i++)
+			{
+				myfile << "v " << VertsX(j, i) << " " << VertsY(j, i) << " " << VertsZ(j, i) << endl;
+			}
+
+			for (int i = 0; i < M; i++)
+			{
+				myfile << "f " << Tris1(0, i) << " " << Tris2(0, i) << " " << Tris3(0, i) << endl;
+			}
+			myfile.close();
+		}
+		else
+		{
+			std::cout << "fooey\n";
+			std::cout << j << endl;
+		}
+	}
+
+
+
+	std::cout << "Done!" << endl;
+
+	//cin.get();
+	return 0;
+}
+
